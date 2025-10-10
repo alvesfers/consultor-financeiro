@@ -4,8 +4,9 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
-// 🚨 importe seu middleware:
+// ✅ importa seus middlewares personalizados
 use App\Http\Middleware\EnsureUserHasRole;
+use App\Http\Middleware\VerifyConsultantScope;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,15 +15,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Alias para usar nas rotas: 'role'
+        // Alias usados nas rotas
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
+            'consultant.scope' => VerifyConsultantScope::class,
         ]);
-
-        // (opcional) adicionar a grupos padrão:
-        // $middleware->appendToGroup('web', EnsureUserHasRole::class);
-        // $middleware->appendToGroup('api', EnsureUserHasRole::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
-    })->create();
+        // Aqui você pode configurar handlers personalizados de exceções, se quiser.
+    })
+    ->create();

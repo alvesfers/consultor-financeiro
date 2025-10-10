@@ -41,7 +41,7 @@ class ConsultantDashboardController extends Controller
             'tx_last10' => $recentTransactions->count(),
         ];
 
-        return view('dashboards.consultant', compact(
+        return view('consultants.dashboard', compact(
             'stats',
             'recentTransactions',
             'tasksExpiring'

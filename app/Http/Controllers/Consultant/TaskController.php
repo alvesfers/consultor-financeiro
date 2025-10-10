@@ -23,12 +23,12 @@ class TaskController extends Controller
         $tasks = Task::where('user_id', $request->user()->id)
             ->latest()->paginate(12);
 
-        return view('consultant.tasks.index', compact('tasks'));
+        return view('consultants.tasks.index', compact('tasks'));
     }
 
     public function create()
     {
-        return view('consultant.tasks.create');
+        return view('consultants.tasks.create');
     }
 
     public function store(Request $request)
@@ -42,14 +42,14 @@ class TaskController extends Controller
 
         Task::create($data);
 
-        return redirect()->route('consultant.tasks.index')->with('status', 'Tarefa criada.');
+        return redirect()->route('consultants.tasks.index')->with('status', 'Tarefa criada.');
     }
 
     public function edit(Task $task)
     {
         $this->authorizeTask($task);
 
-        return view('consultant.tasks.edit', compact('task'));
+        return view('consultants.tasks.edit', compact('task'));
     }
 
     public function update(Request $request, Task $task)
@@ -64,7 +64,7 @@ class TaskController extends Controller
 
         $task->update($data);
 
-        return redirect()->route('consultant.tasks.index')->with('status', 'Tarefa atualizada.');
+        return redirect()->route('consultants.tasks.index')->with('status', 'Tarefa atualizada.');
     }
 
     public function destroy(Task $task)

@@ -3,7 +3,7 @@
 @section('content')
     <div class="tw-flex tw-justify-between tw-items-center tw-mb-6">
         <h1 class="tw-text-2xl tw-font-bold">Tarefas</h1>
-        <a href="{{ route('consultant.tasks.create') }}" class="tw-btn tw-btn-primary">Nova tarefa</a>
+        <a href="{{ route('consultants.tasks.create') }}" class="tw-btn tw-btn-primary">Nova tarefa</a>
     </div>
 
     <x-alert-status />
@@ -32,8 +32,8 @@
                         </td>
                         <td class="tw-flex tw-gap-2">
                             <a class="tw-btn tw-btn-xs tw-btn-outline"
-                                href="{{ route('consultant.tasks.edit', $t) }}">Editar</a>
-                            <form method="POST" action="{{ route('consultant.tasks.destroy', $t) }}"
+                                href="{{ route('consultants.tasks.edit', $t) }}">Editar</a>
+                            <form method="POST" action="{{ route('consultants.tasks.destroy', $t) }}"
                                 onsubmit="return confirm('Excluir tarefa?')">
                                 @csrf @method('DELETE')
                                 <button class="tw-btn tw-btn-xs tw-btn-error">Excluir</button>

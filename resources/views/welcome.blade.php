@@ -49,20 +49,38 @@
                 </ul>
             </div>
 
-            <div class="navbar-end gap-2">
-                @if (Route::has('login'))
-                    @auth
-                        <a href="{{ url('/dashboard') }}" class="btn btn-ghost">Dashboard</a>
-                    @else
-                        <a href="{{ route('login') }}" class="btn btn-ghost">Entrar</a>
-                        @if (Route::has('register'))
-                            <a href="{{ route('register') }}" class="btn btn-primary">Começar agora</a>
-                        @endif
-                    @endauth
-                @else
-                    <a href="#" class="btn btn-primary">Começar agora</a>
-                @endif
-            </div>
+<div class="navbar-end gap-2">
+    @if (Route::has('login'))
+        @auth
+            @php
+                $user = auth()->user();
+                $role = $user->role ?? null;
+                $consultantId = $user->consultant?->id;
+
+                $dashboardUrl = match ($role) {
+                    'admin'      => route('admin.dashboard'),
+                    'consultant' => $consultantId
+                        ? route('consultants.dashboard', ['consultant' => $consultantId])
+                        : url('/dashboard'), // fallback se não tiver perfil de consultor vinculado
+                    'client'     => route('client.dashboard'),
+                    default      => url('/dashboard'),
+                };
+            @endphp
+
+            <a href="{{ $dashboardUrl }}" class="btn btn-ghost">Dashboard</a>
+        @else
+            <a href="{{ route('login') }}" class="btn btn-ghost">Entrar</a>
+            @if (Route::has('register'))
+                <a href="{{ route('register') }}" class="btn btn-primary">Começar agora</a>
+            @endif
+        @endauth
+    @else
+        <a href="#" class="btn btn-primary">Começar agora</a>
+    @endif
+</div>
+
+
+
         </div>
     </header>
 

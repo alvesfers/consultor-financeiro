@@ -3,7 +3,7 @@
 @section('content')
     <div class="tw-flex tw-justify-between tw-items-center tw-mb-6">
         <h1 class="tw-text-2xl tw-font-bold">Clientes</h1>
-        <a href="{{ route('consultant.clients.create') }}" class="tw-btn tw-btn-primary">Novo cliente</a>
+        <a href="{{ route('consultants.clients.create') }}" class="tw-btn tw-btn-primary">Novo cliente</a>
     </div>
 
     <x-alert-status />
@@ -23,10 +23,10 @@
                         <td>{{ $client->name }}</td>
                         <td>{{ $client->email }}</td>
                         <td class="tw-flex tw-gap-2">
-                            <a class="tw-btn tw-btn-xs" href="{{ route('consultant.clients.show', $client) }}">Ver</a>
+                            <a class="tw-btn tw-btn-xs" href="{{ route('consultants.clients.show', $client) }}">Ver</a>
                             <a class="tw-btn tw-btn-xs tw-btn-outline"
-                                href="{{ route('consultant.clients.edit', $client) }}">Editar</a>
-                            <form method="POST" action="{{ route('consultant.clients.destroy', $client) }}"
+                                href="{{ route('consultants.clients.edit', $client) }}">Editar</a>
+                            <form method="POST" action="{{ route('consultants.clients.destroy', $client) }}"
                                 onsubmit="return confirm('Remover este cliente?')">
                                 @csrf @method('DELETE')
                                 <button class="tw-btn tw-btn-xs tw-btn-error">Remover</button>

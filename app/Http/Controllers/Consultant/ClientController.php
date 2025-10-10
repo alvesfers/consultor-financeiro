@@ -18,17 +18,28 @@ class ClientController extends Controller
         });
     }
 
-    public function index(Request $request)
-    {
-        // Exemplo simples: todos usuários com role=client
-        $clients = User::where('role', 'client')->paginate(12);
+public function index(Request $request, $consultant)
+{
+    $consultantModel = Consultant::findOrFail($consultant);
 
-        return view('consultant.clients.index', compact('clients'));
-    }
+    $this->authorize('viewAny', [Client::class, $consultantModel]);
+
+    $clients = Client::where('consultant_id', $consultantModel->id)->paginate(10);
+
+    return view('consultants.clients.index', compact('clients', 'consultantModel'));
+}
+
+public function show($consultant, Client $client)
+{
+    $this->authorize('view', $client);
+
+    return view('consultants.clients.show', compact('client'));
+}
+
 
     public function create()
     {
-        return view('consultant.clients.create');
+        return view('consultants.clients.create');
     }
 
     public function store(Request $request)
@@ -44,21 +55,13 @@ class ClientController extends Controller
 
         User::create($data);
 
-        return redirect()->route('consultant.clients.index')->with('status', 'Cliente criado.');
+        return redirect()->route('consultants.clients.index')->with('status', 'Cliente criado.');
     }
-
-    public function show(User $client)
-    {
-        abort_if($client->role !== 'client', 404);
-
-        return view('consultant.clients.show', compact('client'));
-    }
-
     public function edit(User $client)
     {
         abort_if($client->role !== 'client', 404);
 
-        return view('consultant.clients.edit', compact('client'));
+        return view('consultants.clients.edit', compact('client'));
     }
 
     public function update(Request $request, User $client)
@@ -72,7 +75,7 @@ class ClientController extends Controller
 
         $client->update($data);
 
-        return redirect()->route('consultant.clients.index')->with('status', 'Cliente atualizado.');
+        return redirect()->route('consultants.clients.index')->with('status', 'Cliente atualizado.');
     }
 
     public function destroy(User $client)

@@ -21,17 +21,22 @@ class ClientPolicy
         return $user->isConsultant() || $user->isClient();
     }
 
-    public function view(User $user, Client $client): bool
-    {
-        if ($user->isConsultant()) {
-            return $client->consultant_id === $user->consultant?->id;
-        }
-        if ($user->isClient()) {
-            return $client->user_id === $user->id;
-        }
+public function view(User $user, Client $client): bool
+{
+    if ($user->isAdmin()) return true;
 
-        return false;
+    if ($user->isConsultant()) {
+        return $client->consultant_id === $user->consultant?->id;
     }
+
+    if ($user->isClient()) {
+        return $client->user_id === $user->id;
+    }
+
+    return false;
+}
+
+
 
     public function update(User $user, Client $client): bool
     {
