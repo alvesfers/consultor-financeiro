@@ -1,44 +1,27 @@
 <?php
 
+// app/Models/Category.php
+
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Category extends Model
 {
-    use HasFactory;
+    protected $fillable = ['group_id', 'client_id', 'name', 'is_active'];
 
-    protected $fillable = ['parent_id', 'name', 'is_active'];
-
-    protected $casts = [
-        'is_active' => 'boolean',
-    ];
-
-    // ---- Relations
-    public function parent()
+    public function subcategories()
     {
-        return $this->belongsTo(Category::class, 'parent_id');
+        return $this->hasMany(Subcategory::class);
     }
 
-    public function children()
-    {
-        return $this->hasMany(Category::class, 'parent_id');
-    }
-
-    public function budgets()
-    {
-        return $this->hasMany(Budget::class);
-    }
-
-    // ---- Scopes
-    public function scopeRoots($q)
-    {
-        return $q->whereNull('parent_id');
-    }
-
-    public function scopeActives($q)
+    public function scopeActive($q)
     {
         return $q->where('is_active', true);
+    }
+
+    public function scopeScoped($q, $cid)
+    {
+        return $q->whereNull('client_id')->orWhere('client_id', $cid);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class Goal extends Model
 {
@@ -46,5 +47,22 @@ class Goal extends Model
     public function tasks()
     {
         return $this->hasMany(Task::class, 'related_goal_id');
+    }
+
+    public function scopePending($q)
+    {
+        if (Schema::hasColumn($this->getTable(), 'achieved_at')) {
+            return $q->whereNull('achieved_at');
+        }
+
+        if (Schema::hasColumn($this->getTable(), 'is_achieved')) {
+            return $q->where('is_achieved', false);
+        }
+
+        if (Schema::hasColumn($this->getTable(), 'status')) {
+            return $q->where('status', '!=', 'completed');
+        }
+
+        return $q;
     }
 }

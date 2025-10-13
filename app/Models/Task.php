@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class Task extends Model
 {
@@ -98,5 +99,23 @@ class Task extends Model
     public function attachments()
     {
         return $this->morphMany(Attachment::class, 'owner');
+    }
+
+    public function scopePending($q)
+    {
+        if (Schema::hasColumn($this->getTable(), 'completed_at')) {
+            return $q->whereNull('completed_at');
+        }
+
+        if (Schema::hasColumn($this->getTable(), 'is_completed')) {
+            return $q->where('is_completed', false);
+        }
+
+        if (Schema::hasColumn($this->getTable(), 'status')) {
+            return $q->where('status', '!=', 'completed');
+        }
+
+        // fallback: não filtra
+        return $q;
     }
 }

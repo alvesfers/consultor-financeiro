@@ -7,7 +7,9 @@ use App\Models\User;
 
 class ClientPolicy
 {
-    // Admin libera geral
+    /**
+     * Admin libera geral antes de qualquer verificação.
+     */
     public function before(User $user, string $ability)
     {
         if ($user->isAdmin()) {
@@ -15,36 +17,43 @@ class ClientPolicy
         }
     }
 
+    /**
+     * Qualquer consultor ou cliente pode listar (filtro aplicado no controller).
+     */
     public function viewAny(User $user): bool
     {
-        // Consultor e Cliente podem listar algo (vamos filtrar no controller/repo)
         return $user->isConsultant() || $user->isClient();
     }
 
-public function view(User $user, Client $client): bool
-{
-    if ($user->isAdmin()) return true;
+    /**
+     * Visualização de um cliente específico.
+     */
+    public function view(User $user, Client $client): bool
+    {
+        if ($user->isConsultant()) {
+            return $client->consultant_id === $user->consultant?->id;
+        }
 
-    if ($user->isConsultant()) {
-        return $client->consultant_id === $user->consultant?->id;
+        if ($user->isClient()) {
+            return $client->user_id === $user->id;
+        }
+
+        return false;
     }
 
-    if ($user->isClient()) {
-        return $client->user_id === $user->id;
-    }
-
-    return false;
-}
-
-
-
+    /**
+     * Atualização de dados do cliente.
+     * Permitido apenas ao consultor responsável.
+     */
     public function update(User $user, Client $client): bool
     {
-        // Só consultor dono (ou admin via before)
         return $user->isConsultant()
             && $client->consultant_id === $user->consultant?->id;
     }
 
+    /**
+     * Exclusão segue a mesma regra de atualização.
+     */
     public function delete(User $user, Client $client): bool
     {
         return $this->update($user, $client);
