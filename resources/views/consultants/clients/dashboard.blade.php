@@ -1,5 +1,14 @@
 @extends('layouts.app')
 @section('content')
+    @php
+        // Mês para o título das faturas (todas do mesmo ciclo, pelo 1º item)
+        $invoicesMonthTitle = !empty($cardInvoices)
+            ? \Illuminate\Support\Str::of($cardInvoices[0]['invoice_month'])->replace('-', '/')
+            : now()->format('Y/m');
+
+        // Título das metas (enviado pelo controller)
+        $goalsTitle = $goalsMonthTitle ?? now()->format('m/Y');
+    @endphp
     {{-- ALERTAS --}}
     @if (session('success'))
         <div class="alert alert-success mb-4">
@@ -108,69 +117,141 @@
         </div>
     </div>
 
-    {{-- ======= FATURAS DOS CARTÕES ======= --}}
-    @if (!empty($cardInvoices))
-        <div class="card bg-base-100 shadow mb-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {{-- ======= FATURAS DOS CARTÕES ======= --}}
+        <div class="card bg-base-100 shadow">
             <div class="card-body">
-                <h2 class="card-title"><i class="fa-solid fa-credit-card mr-2"></i> Faturas do mês</h2>
-                <div class="overflow-x-auto mt-2">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Cartão</th>
-                                <th>Mês</th>
-                                <th class="text-right">Total (R$)</th>
-                                <th class="text-right">Limite</th>
-                                <th class="text-right">Disponível</th>
-                                <th>Fecha</th>
-                                <th>Vence</th>
-                                <th class="text-center">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($cardInvoices as $ci)
+                <h2 class="card-title">
+                    <i class="fa-solid fa-credit-card mr-2"></i>
+                    Faturas — {{ $invoicesMonthTitle }}
+                </h2>
+
+                @if (!empty($cardInvoices))
+                    <div class="overflow-x-auto mt-2">
+                        <table class="table">
+                            <thead>
                                 <tr>
-                                    <td>{{ $ci['card']->name }} @if ($ci['card']->brand)
-                                            ({{ $ci['card']->brand }})
-                                        @endif
-                                    </td>
-                                    <td>{{ \Illuminate\Support\Str::of($ci['invoice_month'])->replace('-', '/') }}</td>
-                                    <td class="text-right {{ $ci['total'] > 0 ? 'text-error' : '' }} font-medium">
-                                        {{ number_format($ci['total'], 2, ',', '.') }}
-                                    </td>
-                                    <td class="text-right">
-                                        {{ ($ci['limit'] ?? 0) > 0 ? number_format($ci['limit'], 2, ',', '.') : '—' }}</td>
-                                    <td class="text-right">
-                                        {{ !is_null($ci['available']) ? number_format($ci['available'], 2, ',', '.') : '—' }}
-                                    </td>
-                                    <td>{{ $ci['close_date']->format('d/m/Y') }}</td>
-                                    <td>{{ $ci['due_date']->format('d/m/Y') }}</td>
-                                    <td class="text-center">
-                                        @if ($ci['total'] > 0)
-                                            @if (!empty($ci['all_paid']))
-                                                <span class="badge badge-success">Paga</span>
-                                            @else
-                                                <form method="POST"
-                                                    action="{{ route('client.cards.invoices.pay', ['consultant' => $consultantId, 'card' => $ci['card']->id, 'invoiceMonth' => $ci['invoice_month']]) }}"
-                                                    onsubmit="return confirm('Confirmar pagamento da fatura {{ $ci['invoice_month'] }} do cartão {{ $ci['card']->name }}?')">
-                                                    @csrf
-                                                    <button type="submit" class="btn btn-sm btn-primary">
-                                                        <i class="fa-solid fa-money-bill-wave mr-1"></i> Pagar fatura
-                                                    </button>
-                                                </form>
-                                            @endif
-                                        @else
-                                            <span class="text-xs opacity-60">—</span>
-                                        @endif
-                                    </td>
+                                    <th>Cartão</th>
+                                    <th class="text-right">Valor da fatura (R$)</th>
+                                    <th class="text-right">Limite</th>
+                                    <th class="text-right">Disponível</th>
+                                    <th>Fecha</th>
+                                    <th>Vence</th>
+                                    <th class="text-center">Ações</th>
                                 </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody>
+                                @foreach ($cardInvoices as $ci)
+                                    <tr>
+                                        <td>
+                                            {{ $ci['card']->name }}
+                                            @if ($ci['card']->brand)
+                                                ({{ $ci['card']->brand }})
+                                            @endif
+                                        </td>
+
+                                        <td class="text-right {{ $ci['total'] > 0 ? 'text-error' : '' }} font-medium">
+                                            {{ number_format($ci['total'], 2, ',', '.') }}
+                                        </td>
+
+                                        <td class="text-right">
+                                            {{ ($ci['limit'] ?? 0) > 0 ? number_format($ci['limit'], 2, ',', '.') : '—' }}
+                                        </td>
+
+                                        <td class="text-right">
+                                            {{ !is_null($ci['available']) ? number_format($ci['available'], 2, ',', '.') : '—' }}
+                                        </td>
+
+                                        <td>{{ $ci['close_date']->format('d/m/Y') }}</td>
+                                        <td>{{ $ci['due_date']->format('d/m/Y') }}</td>
+
+                                        <td class="text-center">
+                                            @if ($ci['total'] > 0)
+                                                @if (!empty($ci['all_paid']))
+                                                    <span class="badge badge-success">Paga</span>
+                                                @else
+                                                    <form method="POST"
+                                                        action="{{ route('client.cards.invoices.pay', ['consultant' => $consultantId, 'card' => $ci['card']->id, 'invoiceMonth' => $ci['invoice_month']]) }}"
+                                                        onsubmit="return confirm('Confirmar pagamento da fatura {{ $ci['invoice_month'] }} do cartão {{ $ci['card']->name }}?')">
+                                                        @csrf
+                                                        <button type="submit" class="btn btn-sm btn-primary">
+                                                            <i class="fa-solid fa-money-bill-wave mr-1"></i>
+                                                            Pagar fatura
+                                                        </button>
+                                                    </form>
+                                                @endif
+                                            @else
+                                                <span class="text-xs opacity-60">—</span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <div class="mt-2 text-sm opacity-70">Nenhuma fatura para exibir.</div>
+                @endif
             </div>
         </div>
-    @endif
+
+        {{-- ======= METAS MENSAIS POR CATEGORIA ======= --}}
+        <div class="card bg-base-100 shadow">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fa-solid fa-bullseye mr-2"></i>
+                    Metas do mês — {{ $goalsTitle }}
+                </h2>
+
+                @if (!empty($goalsComparative) && count($goalsComparative))
+                    <div class="space-y-4 mt-2">
+                        @foreach ($goalsComparative as $row)
+                            <div class="space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <div class="font-medium">
+                                        {{ $row['category_name'] }}
+                                    </div>
+                                    <div class="text-xs opacity-70">
+                                        Meta: R$ {{ number_format($row['limit'], 2, ',', '.') }}
+                                    </div>
+                                </div>
+
+                                {{-- Barra de progresso (spent / limit) --}}
+                                <div class="w-full bg-base-200 rounded-full h-2.5">
+                                    <div class="h-2.5 rounded-full {{ $row['exceeded'] ? 'bg-red-500' : 'bg-green-500' }}"
+                                        style="width: {{ number_format(min(100, $row['ratio'] * 100), 2) }}%">
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center justify-between text-sm">
+                                    <div>
+                                        Gasto:
+                                        <span class="font-medium">
+                                            R$ {{ number_format($row['spent'], 2, ',', '.') }}
+                                        </span>
+                                    </div>
+
+                                    <div
+                                        class="{{ $row['exceeded'] ? 'text-red-600 font-semibold' : 'text-green-700 font-medium' }}">
+                                        {{ $row['exceeded'] ? 'Ultrapassou' : 'Saldo:' }}
+                                        @unless ($row['exceeded'])
+                                            R$ {{ number_format($row['remaining'], 2, ',', '.') }}
+                                        @endunless
+                                    </div>
+                                </div>
+                            </div>
+
+                            @if (!$loop->last)
+                                <div class="divider my-2"></div>
+                            @endif
+                        @endforeach
+                    </div>
+                @else
+                    <div class="mt-2 text-sm opacity-70">Nenhuma meta definida para este mês.</div>
+                @endif
+            </div>
+        </div>
+    </div>
 
     {{-- ======= LISTAS E GRÁFICOS ======= --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -205,7 +286,8 @@
         <div class="card bg-base-100 shadow lg:col-span-2">
             <div class="card-body">
                 <div class="flex items-center justify-between">
-                    <h2 class="card-title"><i class="fa-solid fa-arrow-right-arrow-left mr-2"></i> Transações recentes</h2>
+                    <h2 class="card-title"><i class="fa-solid fa-arrow-right-arrow-left mr-2"></i> Transações recentes
+                    </h2>
                     <form method="GET" class="hidden md:flex gap-2">
                         <select name="type" class="select select-bordered select-sm">
                             <option value="">Todos</option>

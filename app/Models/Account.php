@@ -20,7 +20,7 @@ class Account extends Model
     public const TYPE_LOAN = 'loan';
 
     protected $fillable = [
-        'client_id', 'name', 'type', 'on_budget', 'opening_balance', 'currency',
+        'client_id', 'name', 'type', 'on_budget', 'opening_balance', 'currency', 'bank_id',
     ];
 
     protected $casts = [
@@ -34,13 +34,23 @@ class Account extends Model
         return $this->belongsTo(Client::class);
     }
 
+    public function cards()
+    {
+        return $this->hasMany(Card::class, 'payment_account_id');
+    }
+
     public function transactions()
     {
-        return $this->hasMany(Transaction::class);
+        return $this->hasMany(Transaction::class)->orderByDesc('created_at');
     }
 
     public function cardsPaidHere()
     {
         return $this->hasMany(Card::class, 'payment_account_id');
+    }
+
+    public function bank()
+    {
+        return $this->belongsTo(\App\Models\Bank::class);
     }
 }

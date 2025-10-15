@@ -104,8 +104,8 @@ class ClientDashboardController extends Controller
                 't.amount',
                 't.notes',
                 'a.name as account_name',
-                DB::raw('COALESCE(sc.name, c.name) as category_name'),
-                'sc.name as subcategory_name',
+                'c.name as category_name',      // << aqui
+                'sc.name as subcategory_name',  // << aqui
             ]);
 
         // ===================== Gráfico de despesas (30d) =====================
@@ -175,6 +175,49 @@ class ClientDashboardController extends Controller
             ];
         }
 
+        // ===================== Metas mensais por categoria =====================
+        $monthStart = Carbon::now($tz)->startOfMonth()->toDateString();
+        $monthEnd = Carbon::now($tz)->endOfMonth()->toDateString();
+
+        $categoryGoals = DB::table('category_goals')
+            ->join('categories', 'category_goals.category_id', '=', 'categories.id')
+            ->where('category_goals.client_id', $clientId)
+            ->where('category_goals.month', Carbon::parse($monthStart)->startOfMonth()->toDateString())
+            ->orderBy('categories.name')
+            ->get([
+                'categories.id as category_id',
+                'categories.name as category_name',
+                'category_goals.limit_amount',
+            ]);
+
+        // >>> soma de gastos do mês por categoria via transaction_categories
+        $spendingByCategory = DB::table('transactions as t')
+            ->join('transaction_categories as tc', 'tc.transaction_id', '=', 't.id')
+            ->where('t.client_id', $clientId)
+            ->whereBetween('t.date', [$monthStart, $monthEnd])
+            ->groupBy('tc.category_id')
+            ->select('tc.category_id', DB::raw('SUM(CASE WHEN t.amount < 0 THEN ABS(t.amount) ELSE 0 END) as total'))
+            ->pluck('total', 'tc.category_id');
+
+        $goalsComparative = $categoryGoals->map(function ($g) use ($spendingByCategory) {
+            $spent = (float) ($spendingByCategory[$g->category_id] ?? 0);
+            $limit = (float) $g->limit_amount;
+            $remaining = $limit - $spent;
+            $ratio = $limit > 0 ? max(0, min(1, $spent / $limit)) : 0;
+
+            return [
+                'category_id' => $g->category_id,
+                'category_name' => $g->category_name,
+                'limit' => $limit,
+                'spent' => $spent,
+                'remaining' => $remaining,
+                'exceeded' => $spent > $limit,
+                'ratio' => $ratio,
+            ];
+        });
+
+        $goalsMonthTitle = Carbon::parse($monthStart)->locale('pt_BR')->translatedFormat('F/Y');
+
         // ===================== Categorias/Subcategorias p/ modal de Transação =====================
         $categories = Category::query()
             ->where('is_active', true)
@@ -198,18 +241,15 @@ class ClientDashboardController extends Controller
                 ->get(['id', 'name', 'category_id']);
         }
 
-        // Mapa: categoria_id => [ {id, name}, ... ]
         $subcategoriesByCategory = [];
         foreach ($subcategories as $s) {
             $subcategoriesByCategory[$s->category_id][] = ['id' => (int) $s->id, 'name' => $s->name];
         }
 
-        // Expense: grupos Despesas(5) e Saque(3)
         $catsExpense = $categories->whereIn('group_id', [5, 3])
             ->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])
             ->values();
 
-        // Income: grupos Receita(1) e Saldo(2)
         $catsIncome = $categories->whereIn('group_id', [1, 2])
             ->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])
             ->values();
@@ -219,7 +259,6 @@ class ClientDashboardController extends Controller
             'income' => $catsIncome,
         ];
 
-        // (se ainda usar em outras áreas)
         $categoriesByGroup = [];
         foreach ($categories as $cat) {
             $categoriesByGroup[$cat->id] = $subcategories
@@ -276,7 +315,6 @@ class ClientDashboardController extends Controller
                 ->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])
                 ->values();
         } else {
-            // fallback: usa contas de investimento como "investimentos"
             $investments = $accounts
                 ->where('type', 'investment')
                 ->map(fn ($a) => ['id' => (int) $a->id, 'name' => $a->name])
@@ -295,20 +333,18 @@ class ClientDashboardController extends Controller
             'consultantId' => (int) $consultant,
             'cards' => $cards,
             'cardInvoices' => $cardInvoices,
-
-            // coleções usadas em outras áreas
             'categories' => $categories,
             'subcategories' => $subcategories,
             'categoriesByGroup' => $categoriesByGroup,
-
-            // mapas p/ modal de transação
             'categoriesByKind' => $categoriesByKind,
             'subcategoriesByCategory' => $subcategoriesByCategory,
             'investments' => $investments,
-
-            // específicos do modal de investimento
             'invDepositCats' => $invDepositCats,
             'invWithdrawCats' => $invWithdrawCats,
+
+            // novas variáveis de metas mensais
+            'goalsComparative' => $goalsComparative,
+            'goalsMonthTitle' => $goalsMonthTitle,
         ]);
     }
 

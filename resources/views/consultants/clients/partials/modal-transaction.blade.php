@@ -21,23 +21,28 @@
 
             <!-- ====== ESPELHOS HIDDEN (SEMPRE NO DOM) ====== -->
             <input type="hidden" name="kind" :value="form.kind">
-            <input type="hidden" name="type" :value="form.kind"><!-- controller espera 'type' -->
+            <input type="hidden" name="type" :value="form.kind"> <!-- o back usa 'type' -->
             <input type="hidden" name="mode" :value="form.mode">
             <input type="hidden" name="date" :value="form.date">
 
-            <!-- gasto/ganho -->
             <input type="hidden" name="account_id"
                 :value="form.kind !== 'transfer' && form.mode==='account' ? form.account_id : ''">
             <input type="hidden" name="card_id"
                 :value="form.kind !== 'transfer' && form.mode==='card' ? form.card_id : ''">
 
-            <!-- transferência -->
             <input type="hidden" name="from_account_id" :value="form.kind === 'transfer' ? form.from_account_id : ''">
             <input type="hidden" name="to_account_id" :value="form.kind === 'transfer' ? form.to_account_id : ''">
 
-            <!-- classificação -->
             <input type="hidden" name="category_id" :value="form.kind !== 'transfer' ? form.category_id : ''">
             <input type="hidden" name="subcategory_id" :value="form.kind !== 'transfer' ? form.subcategory_id : ''">
+
+            <!-- NOVOS: flags de parcelado -->
+            <input type="hidden" name="is_installment"
+                :value="form.mode === 'card' && form.kind==='expense' && form.is_installment ? 1 : 0">
+            <input type="hidden" name="installments"
+                :value="form.mode === 'card' && form.kind==='expense' ? (form.is_installment ? form.installments : 1) : ''">
+            <input type="hidden" name="first_invoice_month"
+                :value="form.mode === 'card' && form.kind==='expense' && form.is_installment ? form.first_invoice_month : ''">
             <!-- ====== FIM ESPELHOS ====== -->
 
             <!-- STEP 1: Tipo -->
@@ -366,15 +371,19 @@
 
             handleSubmit(e) {
                 // força positivo
-                if (this.form.amount_abs) {
-                    this.form.amount_abs = Math.abs(Number(this.form.amount_abs));
+                if (this.form.amount_abs) this.form.amount_abs = Math.abs(Number(this.form
+                    .amount_abs));
+
+                // se cartão e marcado parcelado, pelo menos 2x; se não marcado, fixa 1x
+                if (this.form.mode === 'card' && this.form.kind === 'expense') {
+                    if (this.form.is_installment) {
+                        if (!this.form.installments || this.form.installments < 2) this.form
+                            .installments = 2;
+                    } else {
+                        this.form.installments = 1;
+                        this.form.first_invoice_month = '';
+                    }
                 }
-                // se cartão parcelado mas nº inválido, desmarca
-                if (this.form.mode === 'card' && this.form.is_installment && (!this.form
-                        .installments || this.form.installments < 2)) {
-                    this.form.is_installment = false;
-                }
-                // submit segue normalmente; espelhos hidden garantem os campos
             },
         }));
     });

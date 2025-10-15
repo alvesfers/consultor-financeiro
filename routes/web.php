@@ -4,8 +4,9 @@ use App\Http\Controllers\Admin\ConsultantController as AdminConsultantController
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\Client\CardInvoiceController;            // dashboard do cliente (no contexto do consultor)
 use App\Http\Controllers\Client\InvestmentController;          // store de transações (conta/cartão/transfer)
-use App\Http\Controllers\ClientDashboardController;         // pagar fatura do cartão
-use App\Http\Controllers\ClientTransactionController;          // NOVO: movimentações de investimento
+use App\Http\Controllers\ClientAccountController;         // pagar fatura do cartão
+use App\Http\Controllers\ClientDashboardController;          // NOVO: movimentações de investimento
+use App\Http\Controllers\ClientTransactionController;
 use App\Http\Controllers\Consultant\CategoryController as ConsultantCategoryController;
 use App\Http\Controllers\Consultant\ClientController as ConsultantClientController;
 use App\Http\Controllers\Consultant\TaskController as ConsultantTaskController;
@@ -116,6 +117,15 @@ Route::prefix('{consultant}/client')
             ->whereNumber('card')
             ->where(['invoiceMonth' => '[0-9]{4}-[0-9]{2}']) // YYYY-MM
             ->name('cards.invoices.pay');
+
+        Route::get('accounts', [ClientAccountController::class, 'index'])->name('accounts.index');
+        Route::post('accounts', [ClientAccountController::class, 'storeAccount'])->name('accounts.store');
+        Route::post('cards', [ClientAccountController::class, 'storeCard'])->name('cards.store');
+        Route::patch('cards/{card}', [ClientAccountController::class, 'updateCard'])->name('cards.update');
+
+        Route::get('transactions', [ClientAccountController::class, 'index'])
+            ->name('transactions.index');
+
     });
 
 require __DIR__.'/auth.php';

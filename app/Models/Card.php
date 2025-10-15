@@ -15,6 +15,7 @@ class Card extends Model
         'client_id',
         'name',
         'brand',
+        'last4',
         'limit_amount',
         'close_day',
         'due_day',
@@ -40,7 +41,7 @@ class Card extends Model
 
     public function transactions()
     {
-        return $this->hasMany(Transaction::class);
+        return $this->hasMany(Transaction::class)->orderByDesc('created_at');
     }
 
     /**
