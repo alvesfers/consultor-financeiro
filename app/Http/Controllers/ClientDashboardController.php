@@ -27,7 +27,7 @@ class ClientDashboardController extends Controller
             ->where('consultant_id', $consultant)
             ->firstOrFail();
 
-        $clientId = $client->id;
+        $clientId = (int) $client->id;
 
         // ===================== Contas & saldos =====================
         $accounts = Account::query()
@@ -46,12 +46,17 @@ class ClientDashboardController extends Controller
 
         // Total investido (contas type=investment)
         $investAccs = $accounts->where('type', 'investment');
-        $investedTotal = (float) $investAccs->sum('opening_balance')
-            + (float) DB::table('transactions')
-                ->where('client_id', $clientId)
-                ->whereIn('account_id', $investAccs->pluck('id'))
-                ->sum('amount');
+        $investAccIds = $investAccs->pluck('id')->all();
 
+        $investedMov = 0.0;
+        if (! empty($investAccIds)) {
+            $investedMov = (float) DB::table('transactions')
+                ->where('client_id', $clientId)
+                ->whereIn('account_id', $investAccIds)
+                ->sum('amount');
+        }
+
+        $investedTotal = (float) $investAccs->sum('opening_balance') + $investedMov;
         $netWorth = $balance + $investedTotal;
 
         // ===================== Tasks / Goals =====================
@@ -82,7 +87,7 @@ class ClientDashboardController extends Controller
             $recentQuery->where('t.amount', '<', 0);
         }
 
-        if ($accountId) {
+        if (! empty($accountId)) {
             $recentQuery->where('t.account_id', $accountId);
         }
 
@@ -171,7 +176,6 @@ class ClientDashboardController extends Controller
         }
 
         // ===================== Categorias/Subcategorias p/ modal de Transação =====================
-        // Buscar categories com group_id (vamos filtrar por "kind"):
         $categories = Category::query()
             ->where('is_active', true)
             ->where(function ($q2) use ($clientId) {
@@ -180,31 +184,34 @@ class ClientDashboardController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'group_id']);
 
-        $subcategories = Subcategory::query()
-            ->where('is_active', true)
-            ->where(function ($q2) use ($clientId) {
-                $q2->whereNull('client_id')->orWhere('client_id', $clientId);
-            })
-            ->whereIn('category_id', $categories->pluck('id'))
-            ->orderBy('name')
-            ->get(['id', 'name', 'category_id']);
+        $categoryIds = $categories->pluck('id')->all();
 
-        // mapa: categoria => [subcategorias...]
+        $subcategories = collect();
+        if (! empty($categoryIds)) {
+            $subcategories = Subcategory::query()
+                ->where('is_active', true)
+                ->where(function ($q2) use ($clientId) {
+                    $q2->whereNull('client_id')->orWhere('client_id', $clientId);
+                })
+                ->whereIn('category_id', $categoryIds)
+                ->orderBy('name')
+                ->get(['id', 'name', 'category_id']);
+        }
+
+        // Mapa: categoria_id => [ {id, name}, ... ]
         $subcategoriesByCategory = [];
         foreach ($subcategories as $s) {
-            $subcategoriesByCategory[$s->category_id][] = ['id' => $s->id, 'name' => $s->name];
+            $subcategoriesByCategory[$s->category_id][] = ['id' => (int) $s->id, 'name' => $s->name];
         }
 
         // Expense: grupos Despesas(5) e Saque(3)
-        $catsExpense = $categories
-            ->whereIn('group_id', [5, 3])
-            ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
+        $catsExpense = $categories->whereIn('group_id', [5, 3])
+            ->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])
             ->values();
 
         // Income: grupos Receita(1) e Saldo(2)
-        $catsIncome = $categories
-            ->whereIn('group_id', [1, 2])
-            ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
+        $catsIncome = $categories->whereIn('group_id', [1, 2])
+            ->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])
             ->values();
 
         $categoriesByKind = [
@@ -212,12 +219,12 @@ class ClientDashboardController extends Controller
             'income' => $catsIncome,
         ];
 
-        // (opcional, se usa em outros lugares da view)
+        // (se ainda usar em outras áreas)
         $categoriesByGroup = [];
         foreach ($categories as $cat) {
             $categoriesByGroup[$cat->id] = $subcategories
                 ->where('category_id', $cat->id)
-                ->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])
+                ->map(fn ($s) => ['id' => (int) $s->id, 'name' => $s->name])
                 ->values()
                 ->toArray();
         }
@@ -246,8 +253,8 @@ class ClientDashboardController extends Controller
                 ->get(['id', 'name']);
         };
 
-        $invDepositCats = $childrenOf('Investimento')->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])->values();
-        $invWithdrawCats = $childrenOf('Resgate')->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])->values();
+        $invDepositCats = $childrenOf('Investimento')->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])->values();
+        $invWithdrawCats = $childrenOf('Resgate')->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])->values();
 
         $investmentRoot = Category::query()
             ->where('is_active', true)
@@ -266,12 +273,13 @@ class ClientDashboardController extends Controller
                 })
                 ->orderBy('name')
                 ->get(['id', 'name'])
-                ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
+                ->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])
                 ->values();
         } else {
+            // fallback: usa contas de investimento como "investimentos"
             $investments = $accounts
                 ->where('type', 'investment')
-                ->map(fn ($a) => ['id' => $a->id, 'name' => $a->name])
+                ->map(fn ($a) => ['id' => (int) $a->id, 'name' => $a->name])
                 ->values();
         }
 
