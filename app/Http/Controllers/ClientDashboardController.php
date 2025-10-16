@@ -29,11 +29,11 @@ class ClientDashboardController extends Controller
 
         $clientId = (int) $client->id;
 
-        // ===================== Contas & saldos =====================
+        // ===== Contas & saldos
         $accounts = Account::query()
             ->where('client_id', $clientId)
             ->orderBy('name')
-            ->get(['id', 'name', 'type', 'on_budget', 'currency', 'opening_balance']);
+            ->get(['id', 'name', 'type', 'on_budget', 'currency', 'opening_balance', 'bank_id']);
 
         $opening = (float) $accounts->where('on_budget', true)->sum('opening_balance');
 
@@ -59,7 +59,7 @@ class ClientDashboardController extends Controller
         $investedTotal = (float) $investAccs->sum('opening_balance') + $investedMov;
         $netWorth = $balance + $investedTotal;
 
-        // ===================== Tasks / Goals =====================
+        // ===== Tasks / Goals
         $tasksPendingCount = Task::where('client_id', $clientId)
             ->where('assigned_to', $user->id)
             ->where('status', 'open')
@@ -69,13 +69,24 @@ class ClientDashboardController extends Controller
             ->whereIn('status', ['ativo', 'pausado', 'atrasado'])
             ->count();
 
-        // ===================== Filtros transações (lista recente) =====================
-        $type = $request->query('type');           // 'income' | 'expense' | null
+        // ===== Filtros (mantemos GET funcional; a UI filtra via Alpine)
+        $type = $request->query('type');   
         $accountId = $request->query('account_id');
         $q = trim($request->query('q', ''));
 
+        $bankMap = [
+            1 => ['fa-brands fa-nubank', 'Nubank'],
+            2 => ['fa-solid fa-building-columns', 'Inter'],
+            3 => ['fa-solid fa-building-columns', 'Santander'],
+            4 => ['fa-solid fa-building-columns', 'Itaú'],
+            5 => ['fa-solid fa-building-columns', 'Bradesco'],
+        ];
+        $defaultBank = ['fa-solid fa-building-columns', null];
+
+        // ===== Transações recentes (joins + aliases de parcelas)
         $recentQuery = DB::table('transactions as t')
             ->leftJoin('accounts as a', 'a.id', '=', 't.account_id')
+            ->leftJoin('cards as cd', 'cd.id', '=', 't.card_id')
             ->leftJoin('transaction_categories as tc', 'tc.transaction_id', '=', 't.id')
             ->leftJoin('categories as c', 'c.id', '=', 'tc.category_id')
             ->leftJoin('subcategories as sc', 'sc.id', '=', 'tc.subcategory_id')
@@ -85,6 +96,12 @@ class ClientDashboardController extends Controller
             $recentQuery->where('t.amount', '>', 0);
         } elseif ($type === 'expense') {
             $recentQuery->where('t.amount', '<', 0);
+        } elseif ($type === 'transfer') {
+            // Se você marca transferências por categoria:
+            $recentQuery->where(function ($q2) {
+                $q2->where('c.name', 'like', '%Transfer%')
+                    ->orWhere('sc.name', 'like', '%Transfer%');
+            });
         }
 
         if (! empty($accountId)) {
@@ -97,18 +114,33 @@ class ClientDashboardController extends Controller
 
         $recentTransactions = $recentQuery
             ->orderByDesc('t.date')
-            ->limit(10)
+            ->limit(50) // dá margem pros filtros no front
             ->get([
                 't.id',
                 't.date',
                 't.amount',
                 't.notes',
+                't.account_id',
+                't.card_id',
+                // aliases p/ bater com o Blade/Alpine:
+                DB::raw('t.installment_count       as installment_total'),
+                DB::raw('t.installment_index       as installment_number'),
+                DB::raw('t.parent_transaction_id   as installment_group_id'),
                 'a.name as account_name',
-                'c.name as category_name',      // << aqui
-                'sc.name as subcategory_name',  // << aqui
-            ]);
+                'a.bank_id',
+                'cd.name as card_name',
+                'c.name as category_name',
+                'sc.name as subcategory_name',
+            ])
+            ->map(function ($t) use ($bankMap, $defaultBank) {
+                [$icon, $name] = $bankMap[$t->bank_id ?? 0] ?? $defaultBank;
+                $t->bank_icon_class = $icon;
+                $t->bank_name = $name;
 
-        // ===================== Gráfico de despesas (30d) =====================
+                return $t;
+            });
+
+        // ===== Donut de despesas (30d)
         $since = Carbon::now($tz)->subDays(30)->startOfDay();
 
         $byCategory = DB::table('transactions as t')
@@ -126,8 +158,9 @@ class ClientDashboardController extends Controller
             'labels' => $byCategory->pluck('name'),
             'values' => $byCategory->pluck('total')->map(fn ($v) => (float) $v),
         ];
+        $pieCategories = $chartCategories;
 
-        // ===================== Faturas dos cartões =====================
+        // ===== Faturas dos cartões
         $cards = Card::where('client_id', $clientId)
             ->orderBy('name')
             ->get(['id', 'name', 'brand', 'limit_amount', 'close_day', 'due_day', 'payment_account_id']);
@@ -175,7 +208,7 @@ class ClientDashboardController extends Controller
             ];
         }
 
-        // ===================== Metas mensais por categoria =====================
+        // ===== Metas mensais por categoria
         $monthStart = Carbon::now($tz)->startOfMonth()->toDateString();
         $monthEnd = Carbon::now($tz)->endOfMonth()->toDateString();
 
@@ -190,7 +223,6 @@ class ClientDashboardController extends Controller
                 'category_goals.limit_amount',
             ]);
 
-        // >>> soma de gastos do mês por categoria via transaction_categories
         $spendingByCategory = DB::table('transactions as t')
             ->join('transaction_categories as tc', 'tc.transaction_id', '=', 't.id')
             ->where('t.client_id', $clientId)
@@ -218,7 +250,7 @@ class ClientDashboardController extends Controller
 
         $goalsMonthTitle = Carbon::parse($monthStart)->locale('pt_BR')->translatedFormat('F/Y');
 
-        // ===================== Categorias/Subcategorias p/ modal de Transação =====================
+        // ===== Categorias/Subcategorias p/ modal de Transação
         $categories = Category::query()
             ->where('is_active', true)
             ->where(function ($q2) use ($clientId) {
@@ -268,7 +300,7 @@ class ClientDashboardController extends Controller
                 ->toArray();
         }
 
-        // ===================== Helpers específicos (Investimento/Resgate) =====================
+        // ===== Helpers (Investimento/Resgate)
         $childrenOf = function (string $name) use ($clientId) {
             $root = Category::query()
                 ->where('is_active', true)
@@ -328,11 +360,18 @@ class ClientDashboardController extends Controller
             'netWorth' => $netWorth,
             'tasksPendingCount' => $tasksPendingCount,
             'goalsPendingCount' => $goalsPendingCount,
+
+            // lista para Alpine (ícone/nome banco, cartão, parcelas alias)
             'recentTransactions' => $recentTransactions,
+
+            // donut (30d)
             'chartCategories' => $chartCategories,
+            'pieCategories' => $pieCategories,
+
             'consultantId' => (int) $consultant,
             'cards' => $cards,
             'cardInvoices' => $cardInvoices,
+
             'categories' => $categories,
             'subcategories' => $subcategories,
             'categoriesByGroup' => $categoriesByGroup,
@@ -342,7 +381,6 @@ class ClientDashboardController extends Controller
             'invDepositCats' => $invDepositCats,
             'invWithdrawCats' => $invWithdrawCats,
 
-            // novas variáveis de metas mensais
             'goalsComparative' => $goalsComparative,
             'goalsMonthTitle' => $goalsMonthTitle,
         ]);

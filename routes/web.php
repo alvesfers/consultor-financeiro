@@ -6,7 +6,9 @@ use App\Http\Controllers\Client\CardInvoiceController;            // dashboard d
 use App\Http\Controllers\Client\InvestmentController;          // store de transações (conta/cartão/transfer)
 use App\Http\Controllers\ClientAccountController;         // pagar fatura do cartão
 use App\Http\Controllers\ClientDashboardController;          // NOVO: movimentações de investimento
+use App\Http\Controllers\ClientInvoiceController;
 use App\Http\Controllers\ClientTransactionController;
+use App\Http\Controllers\ClientGoalController;
 use App\Http\Controllers\Consultant\CategoryController as ConsultantCategoryController;
 use App\Http\Controllers\Consultant\ClientController as ConsultantClientController;
 use App\Http\Controllers\Consultant\TaskController as ConsultantTaskController;
@@ -101,31 +103,39 @@ Route::prefix('{consultant}/client')
     ->name('client.')
     ->middleware(['auth', 'verified', 'role:client'])
     ->group(function () {
-        // Painel do cliente
-        Route::get('/dashboard', [ClientDashboardController::class, 'index'])->name('dashboard');
 
-        // Nova transação (conta/cartão/transferência)
+        // Dashboard
+        Route::get('/dashboard', [ClientDashboardController::class, 'index'])
+            ->name('dashboard');
+
+        // Transações (criar)
         Route::post('/transactions', [ClientTransactionController::class, 'store'])
             ->name('transactions.store');
 
-        // Movimentações de investimento (ENVIAR/RETIRAR) — NOVO
+        // Movimentações de investimento
         Route::post('/investments/move', [InvestmentController::class, 'move'])
             ->name('investments.move');
 
-        // Pagar fatura do cartão
-        Route::post('/cards/{card}/invoices/{invoiceMonth}/pay', [CardInvoiceController::class, 'pay'])
-            ->whereNumber('card')
-            ->where(['invoiceMonth' => '[0-9]{4}-[0-9]{2}']) // YYYY-MM
-            ->name('cards.invoices.pay');
-
+        // Contas / Cartões
         Route::get('accounts', [ClientAccountController::class, 'index'])->name('accounts.index');
         Route::post('accounts', [ClientAccountController::class, 'storeAccount'])->name('accounts.store');
         Route::post('cards', [ClientAccountController::class, 'storeCard'])->name('cards.store');
         Route::patch('cards/{card}', [ClientAccountController::class, 'updateCard'])->name('cards.update');
 
-        Route::get('transactions', [ClientAccountController::class, 'index'])
-            ->name('transactions.index');
+        // Faturas (derivadas de transactions)
+        Route::get('invoices', [ClientInvoiceController::class, 'index'])->name('invoices.index');
+        Route::get('invoices/{invoice}', [ClientInvoiceController::class, 'show'])->name('invoices.show');
+        Route::post('invoices/{invoice}/mark-paid', [ClientInvoiceController::class, 'markPaid'])->name('invoices.markPaid');
 
+        Route::get('goals', [ClientGoalController::class, 'index'])->name('goals.index');
+
+        Route::post('/cards/{card}/invoices/{invoiceMonth}/pay', [CardInvoiceController::class, 'pay'])
+            ->whereNumber('card')
+            ->where(['invoiceMonth' => '[0-9]{4}-[0-9]{2}']) // YYYY-MM
+            ->name('cards.invoices.pay');
+
+        // Listar transações (se existir essa página)
+        Route::get('transactions', [ClientAccountController::class, 'index'])->name('transactions.index');
     });
 
 require __DIR__.'/auth.php';

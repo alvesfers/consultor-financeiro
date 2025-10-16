@@ -8,7 +8,7 @@
 
     {{-- Font Awesome --}}
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-     @stack('head')
+    @stack('head')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
@@ -126,6 +126,7 @@
             {{-- Main --}}
             <main class="p-4 lg:p-6">
                 @yield('content')
+                @include('partials.flash')
             </main>
         </div>
 
@@ -223,8 +224,8 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ $cHref('client.goals.monthly') }}"
-                                class="{{ request()->routeIs('client.goals.monthly*') ? 'active' : '' }} flex items-center gap-3 py-3 rounded-lg hover:bg-base-100">
+                            <a href="{{ $cHref('client.goals.index') }}"
+                                class="{{ request()->routeIs('client.goals') ? 'active' : '' }} flex items-center gap-3 py-3 rounded-lg hover:bg-base-100">
                                 {!! $icon('monthly_goals') !!}<span>Metas mensais</span>
                             </a>
                         </li>
@@ -377,9 +378,9 @@
                             </a>
                         </li>
 
-                        @php($c = $collapsedLink('client.goals.monthly*'))
+                        @php($c = $collapsedLink('client.goals'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Metas mensais">
-                            <a href="{{ $cHref('client.goals.monthly') }}" class="{{ $c['a'] }}"
+                            <a href="{{ $cHref('client.goals.index') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
                                 <span class="{{ $c['icon'] }}">{!! $icon('monthly_goals') !!}</span>
                                 <span class="{{ $c['label'] }}">Metas</span>
