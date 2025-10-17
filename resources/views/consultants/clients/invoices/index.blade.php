@@ -1,3 +1,4 @@
+{{-- resources/views/client/invoices/index.blade.php --}}
 @extends('layouts.app')
 
 @section('content')
@@ -7,6 +8,7 @@
         {
             return 'R$ ' . number_format((float) $v, 2, ',', '.');
         }
+
         $f = $filters ?? [
             'bank_id' => null,
             'account_id' => null,
@@ -23,7 +25,7 @@
         filters: @json($f)
     })" x-init="init()">
 
-        {{-- Breadcrumb + Title --}}
+        {{-- Breadcrumb --}}
         <div class="breadcrumbs text-sm text-base-content/70">
             <ul>
                 <li><a href="{{ route('client.dashboard', ['consultant' => $consultantId]) }}" class="link">Início</a></li>
@@ -33,6 +35,7 @@
             </ul>
         </div>
 
+        {{-- Título --}}
         <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="avatar placeholder">
@@ -78,7 +81,7 @@
             </div>
         </div>
 
-        {{-- Filtros (card) --}}
+        {{-- Card de filtros --}}
         <div class="card shadow-sm bg-base-100">
             <div class="card-body gap-4">
                 <div class="flex flex-wrap items-center gap-2">
@@ -126,7 +129,7 @@
                                     <select name="card_id" class="select select-bordered">
                                         <option value="">Todos</option>
                                         @foreach ($cards as $c)
-                                            <option value="{{ $c->id }}" @selected(($f['card_id'] ?? null) == $c->id)">
+                                            <option value="{{ $c->id }}" @selected(($f['card_id'] ?? null) == $c->id)>
                                                 {{ $c->name }} @if ($c->last4)
                                                     •••• {{ $c->last4 }}
                                                 @endif
@@ -197,7 +200,7 @@
             </div>
         </div>
 
-        {{-- Tabela dentro de Card --}}
+        {{-- Tabela --}}
         <div class="card shadow-sm bg-base-100">
             <div class="card-body p-0">
                 @if ($invoices->count() === 0)
@@ -302,12 +305,6 @@
                                                             <i class="fa-solid fa-check"></i> Marcar como paga
                                                         </button>
                                                     </li>
-                                                    <li>
-                                                        <button type="button"
-                                                            @click="copyBillet({ id: {{ $inv->id }} })">
-                                                            <i class="fa-regular fa-copy"></i> Copiar linha digitável
-                                                        </button>
-                                                    </li>
                                                 </ul>
                                             </div>
                                         </td>
@@ -349,26 +346,13 @@
             </div>
             <form method="dialog" class="modal-backdrop"><button>close</button></form>
         </dialog>
-
-        {{-- Modal de feedback de cópia --}}
-        <dialog id="copyModal" class="modal">
-            <div class="modal-box">
-                <h3 class="font-bold text-lg">Copiado!</h3>
-                <p class="py-2" x-text="copyMessage || 'Linha digitável copiada para a área de transferência.'"></p>
-                <div class="modal-action">
-                    <form method="dialog"><button class="btn">Fechar</button></form>
-                </div>
-            </div>
-            <form method="dialog" class="modal-backdrop"><button>close</button></form>
-        </dialog>
     </div>
 
-    {{-- Alpine: tudo declarado para evitar "is not defined" --}}
+    {{-- Alpine.js --}}
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('invoiceList', (params) => ({
-                // STATE
-                items: Array.isArray(params.initial) ? params.initial : [],
+                items: params.initial || [],
                 summary: params.summary || {
                     total: 0,
                     open: 0,
@@ -385,8 +369,8 @@
                 }, params.filters || {}),
                 copyMessage: '',
 
-                // METHODS
                 init() {},
+
                 formatMoney(v) {
                     try {
                         return Number(v ?? 0).toLocaleString('pt-BR', {
@@ -397,18 +381,7 @@
                         return 'R$ 0,00';
                     }
                 },
-                async copyBillet(inv) {
-                    const line = '00190.00009 01234.567891 23456.789012 3 56780000012345'; // mock
-                    try {
-                        await navigator.clipboard.writeText(line);
-                        this.copyMessage = `Linha digitável da fatura #${inv.id} copiada.`;
-                    } catch (e) {
-                        this.copyMessage =
-                            'Não foi possível copiar automaticamente. Selecione e copie manualmente: ' +
-                            line;
-                    }
-                    document.getElementById('copyModal')?.showModal();
-                },
+
                 openPayModal(actionUrl) {
                     const form = document.getElementById('payForm');
                     form?.setAttribute('action', actionUrl);

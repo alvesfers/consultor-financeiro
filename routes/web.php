@@ -2,17 +2,17 @@
 
 use App\Http\Controllers\Admin\ConsultantController as AdminConsultantController;
 use App\Http\Controllers\AdminDashboardController;
-use App\Http\Controllers\Client\CardInvoiceController;            // dashboard do cliente (no contexto do consultor)
-use App\Http\Controllers\Client\InvestmentController;          // store de transações (conta/cartão/transfer)
-use App\Http\Controllers\ClientAccountController;         // pagar fatura do cartão
-use App\Http\Controllers\ClientDashboardController;          // NOVO: movimentações de investimento
+use App\Http\Controllers\Client\CardInvoiceController;     // dashboard do cliente (no contexto do consultor)
+use App\Http\Controllers\Client\InvestmentController;       // NOVO: movimentações de investimento
+use App\Http\Controllers\ClientAccountController;           // pagar fatura do cartão
+use App\Http\Controllers\ClientDashboardController;
+use App\Http\Controllers\ClientGoalController;
 use App\Http\Controllers\ClientInvoiceController;
 use App\Http\Controllers\ClientTransactionController;
-use App\Http\Controllers\ClientGoalController;
 use App\Http\Controllers\Consultant\CategoryController as ConsultantCategoryController;
 use App\Http\Controllers\Consultant\ClientController as ConsultantClientController;
 use App\Http\Controllers\Consultant\TaskController as ConsultantTaskController;
-use App\Http\Controllers\ConsultantDashboardController;
+use App\Http\Controllers\ConsultantDashboardController;     // seu dashboard no namespace raiz
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
@@ -83,17 +83,31 @@ Route::prefix('admin')
  */
 Route::prefix('{consultant}')
     ->whereNumber('consultant')
-    ->name('consultant.')
+    ->name('consultant.')   // <-- mantenha NO SINGULAR
     ->middleware(['auth', 'verified', 'role:consultant'])
     ->group(function () {
-        Route::get('/dashboard', [ConsultantDashboardController::class, 'index'])->name('dashboard');
+        // Dashboard (precisa existir para o layout)
+        Route::get('/dashboard', [ConsultantDashboardController::class, 'index'])
+            ->name('dashboard');
 
+        // Outros recursos
         Route::resource('clients', ConsultantClientController::class)->names('clients');
         Route::resource('tasks', ConsultantTaskController::class)->names('tasks');
 
-        Route::resource('categories', ConsultantCategoryController::class)
-            ->names('categories'); // gera consultant.categories.*
+        // Categorias
+        Route::patch('categories/{category}/toggle', [ConsultantCategoryController::class, 'toggle'])
+            ->name('categories.toggle');
+        Route::resource('categories', ConsultantCategoryController::class)->names('categories');
+
+        // Subcategorias (na MESMA controller)
+        Route::post('categories/{category}/subcategories', [ConsultantCategoryController::class, 'subStore'])
+            ->name('categories.subcategories.store');
+        Route::put('categories/{category}/subcategories/{subcategory}', [ConsultantCategoryController::class, 'subUpdate'])
+            ->name('categories.subcategories.update');
+        Route::delete('categories/{category}/subcategories/{subcategory}', [ConsultantCategoryController::class, 'subDestroy'])
+            ->name('categories.subcategories.destroy');
     });
+
 
 /**
  * CLIENT (no contexto do consultor): /{consultant}/client/...

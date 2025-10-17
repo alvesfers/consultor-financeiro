@@ -61,4 +61,9 @@ class Client extends Model
     {
         return $this->hasMany(Task::class);
     }
+
+    public function categoryGroups()
+    {
+        return $this->hasMany(CategoryGroup::class);
+    }
 }

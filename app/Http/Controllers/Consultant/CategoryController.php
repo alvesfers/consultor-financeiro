@@ -4,75 +4,115 @@ namespace App\Http\Controllers\Consultant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\CategoryGroup;
+use App\Models\Subcategory;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CategoryController extends Controller
 {
+    /* =========================
+     * LISTAGEM / TELA ÚNICA
+     * ========================= */
     public function index(Request $request, $consultant)
     {
-        // lista hierárquica simples
-        $query = Category::query()->orderBy('name');
-        if ($request->filled('q')) {
-            $q = trim($request->get('q'));
+        $q = trim((string) $request->get('q', ''));
+        $status = $request->get('status', 'all'); // all|active|inactive
+        $groupId = $request->get('group_id');
+
+        $query = Category::query()
+            ->with(['group:id,name'])
+            ->withCount('subcategories');
+
+        if ($q !== '') {
             $query->where('name', 'like', "%{$q}%");
         }
-        $categories = $query->get();
+        if ($status === 'active') {
+            $query->where('is_active', true);
+        } elseif ($status === 'inactive') {
+            $query->where('is_active', false);
+        }
+        if (! empty($groupId)) {
+            $query->where('group_id', (int) $groupId);
+        }
 
-        // pais p/ select de relacionamento
-        $parents = Category::whereNull('parent_id')->orderBy('name')->get(['id', 'name']);
+        // carrega categorias e, para os cards, já traz subcategorias (ordenadas)
+        $categories = $query
+            ->orderByRaw('CASE WHEN group_id IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('group_id')
+            ->orderBy('name')
+            ->get(['id', 'name', 'group_id', 'is_active'])
+            ->load(['subcategories' => function ($q) {
+                $q->orderBy('name')->select(['id', 'category_id', 'name', 'is_active']);
+            }]);
 
-        return view('consultants.categories.index', compact('categories', 'parents', 'consultant'));
+        $groups = CategoryGroup::orderBy('name')->get(['id', 'name']);
+
+        $summary = [
+            'total' => $categories->count(),
+            'active' => $categories->where('is_active', true)->count(),
+            'inactive' => $categories->where('is_active', false)->count(),
+        ];
+
+        // HTML normal (primeiro load) ou JSON (AJAX de filtros)
+        if ($request->wantsJson()) {
+            return response()->json([
+                'categories' => $categories,
+                'summary' => $summary,
+            ]);
+        }
+
+        return view('consultants.categories.index', compact(
+            'categories', 'groups', 'consultant', 'q', 'status', 'groupId', 'summary'
+        ));
     }
 
+    /* =========================
+     * CATEGORIAS
+     * ========================= */
     public function store(Request $request, $consultant)
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'parent_id' => ['nullable', 'exists:categories,id'],
+            'name' => ['required', 'string', 'max:255'],
+            'group_id' => ['nullable', Rule::exists('category_groups', 'id')],
             'is_active' => ['nullable', 'boolean'],
         ]);
-        $data['is_active'] = (bool) ($data['is_active'] ?? true);
+        $data['is_active'] = $request->boolean('is_active', true);
 
-        Category::create($data);
+        $cat = Category::create($data);
 
-        return back()->with('success', 'Categoria criada com sucesso!');
-    }
-
-    public function edit(Request $request, $consultant, Category $category)
-    {
-        $parents = Category::whereNull('parent_id')
-            ->where('id', '!=', $category->id)
-            ->orderBy('name')->get(['id', 'name']);
-
-        return view('consultants.categories.edit', compact('category', 'parents', 'consultant'));
+        return $request->wantsJson()
+            ? response()->json(['ok' => true, 'category' => $cat->fresh(['group'])->loadCount('subcategories')])
+            : redirect()->route('consultants.categories.index', ['consultant' => $consultant])
+                ->with('success', 'Categoria criada com sucesso!');
     }
 
     public function update(Request $request, $consultant, Category $category)
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'parent_id' => ['nullable', 'exists:categories,id'],
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'group_id' => ['nullable', Rule::exists('category_groups', 'id')],
             'is_active' => ['nullable', 'boolean'],
         ]);
-        $data['is_active'] = (bool) ($data['is_active'] ?? false);
-
-        // evita ser filho de si mesma
-        if (isset($data['parent_id']) && (int) $data['parent_id'] === (int) $category->id) {
-            unset($data['parent_id']);
+        if ($request->has('is_active')) {
+            $data['is_active'] = $request->boolean('is_active');
         }
 
         $category->update($data);
 
-        return redirect()->route('consultants.categories.index', ['consultant' => $consultant])
-            ->with('success', 'Categoria atualizada!');
+        return $request->wantsJson()
+            ? response()->json(['ok' => true, 'category' => $category->fresh(['group'])->loadCount('subcategories')])
+            : redirect()->route('consultants.categories.index', ['consultant' => $consultant])
+                ->with('success', 'Categoria atualizada!');
     }
 
     public function destroy(Request $request, $consultant, Category $category)
     {
-        // se tiver filhas, você pode escolher bloquear ou reatribuir; aqui vamos permitir deletar em cascata se FK permitir
         $category->delete();
 
-        return back()->with('success', 'Categoria excluída!');
+        return $request->wantsJson()
+            ? response()->json(['ok' => true])
+            : back()->with('success', 'Categoria excluída!');
     }
 
     public function toggle(Request $request, $consultant, Category $category)
@@ -80,6 +120,65 @@ class CategoryController extends Controller
         $category->is_active = ! $category->is_active;
         $category->save();
 
-        return back()->with('success', 'Status atualizado!');
+        return $request->wantsJson()
+            ? response()->json(['ok' => true, 'is_active' => (bool) $category->is_active])
+            : back()->with('success', 'Status atualizado!');
+    }
+
+    /* =========================
+     * SUBCATEGORIAS (na mesma controller)
+     * ========================= */
+
+    // POST /{consultant}/categories/{category}/subcategories
+    public function subStore(Request $request, $consultant, Category $category)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+        $data['is_active'] = $request->boolean('is_active', true);
+
+        $sub = $category->subcategories()->create($data);
+
+        return response()->json([
+            'ok' => true,
+            'subcategory' => $sub,
+        ]);
+    }
+
+    // PUT /{consultant}/categories/{category}/subcategories/{subcategory}
+    public function subUpdate(Request $request, $consultant, Category $category, Subcategory $subcategory)
+    {
+        // garante vínculo correto
+        if ((int) $subcategory->category_id !== (int) $category->id) {
+            abort(404);
+        }
+
+        $data = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:120'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+        if ($request->has('is_active')) {
+            $data['is_active'] = $request->boolean('is_active');
+        }
+
+        $subcategory->update($data);
+
+        return response()->json([
+            'ok' => true,
+            'subcategory' => $subcategory->fresh(),
+        ]);
+    }
+
+    // DELETE /{consultant}/categories/{category}/subcategories/{subcategory}
+    public function subDestroy(Request $request, $consultant, Category $category, Subcategory $subcategory)
+    {
+        if ((int) $subcategory->category_id !== (int) $category->id) {
+            abort(404);
+        }
+
+        $subcategory->delete();
+
+        return response()->json(['ok' => true]);
     }
 }

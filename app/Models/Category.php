@@ -12,7 +12,7 @@ class Category extends Model
 
     public function subcategories()
     {
-        return $this->hasMany(Subcategory::class);
+        return $this->hasMany(Subcategory::class, 'category_id');
     }
 
     public function scopeActive($q)
@@ -23,5 +23,10 @@ class Category extends Model
     public function scopeScoped($q, $cid)
     {
         return $q->whereNull('client_id')->orWhere('client_id', $cid);
+    }
+
+    public function group()
+    {
+        return $this->belongsTo(CategoryGroup::class, 'group_id');
     }
 }
