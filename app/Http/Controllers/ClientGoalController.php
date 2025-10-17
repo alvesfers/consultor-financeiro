@@ -48,12 +48,31 @@ class ClientGoalController extends Controller
             $cursor->subMonth();
         }
 
+        // ---------------- Categorias de DESPESAS (group_id = 5) ----------------
+        // (sem parent_id; sua categories é "flat")
+        $expenseRootMap = DB::table('categories')
+            ->where('is_active', true)
+            ->where('group_id', 5)
+            ->orderBy('name')
+            ->pluck('name', 'id'); // [id => name]
+
+        $expenseRootIds = array_map('intval', array_keys($expenseRootMap->toArray()));
+
+        // Se houver filtro, restringe o universo de categorias
+        if ($filterCategoryId) {
+            $expenseRootIds = array_values(array_intersect($expenseRootIds, [$filterCategoryId]));
+            if (empty($expenseRootIds)) {
+                // filtro não pertence a despesas -> força ausência de resultados
+                $expenseRootIds = [-1];
+            }
+        }
+
         // ---------------- Metas (category_goals) ----------------
         $goalsRows = DB::table('category_goals as cg')
             ->join('categories as c', 'c.id', '=', 'cg.category_id')
             ->where('cg.client_id', $clientId)
             ->whereBetween('cg.month', [$startMonth->toDateString(), $endMonth->toDateString()])
-            ->when($filterCategoryId, fn ($q) => $q->where('cg.category_id', $filterCategoryId))
+            ->when(! empty($expenseRootIds), fn ($q) => $q->whereIn('cg.category_id', $expenseRootIds))
             ->orderBy('cg.month', 'desc')
             ->orderBy('c.name')
             ->get([
@@ -63,7 +82,7 @@ class ClientGoalController extends Controller
                 'c.name as category_name',
             ]);
 
-        // Agrupa metas por (month->Y-m, category_id)
+        // Agrupa metas por (Y-m -> category_id)
         $goalsByMonthCat = [];
         foreach ($goalsRows as $r) {
             $ym = Carbon::parse($r->month, $tz)->format('Y-m');
@@ -74,39 +93,38 @@ class ClientGoalController extends Controller
             ];
         }
 
-        // ---------------- Subcategorias por categoria ----------------
-        // (usa tabela subcategories)
-        $allGoalCategoryIds = array_unique(
-            array_map(
-                'intval',
-                array_merge(
-                    [],
-                    ...array_map(fn ($arr) => array_keys($arr ?? []), array_values($goalsByMonthCat ?: []))
-                )
-            )
-        );
+        // ---------------- Subcategorias (para mapear root e nome) ----------------
+        $subs = DB::table('subcategories')
+            ->where('is_active', true)
+            ->when(! empty($expenseRootIds), fn ($q) => $q->whereIn('category_id', $expenseRootIds))
+            ->get(['id', 'category_id', 'name']);
 
+        // subId => ['category_id'=>X, 'name'=>Y]
+        $subsInfo = [];
+        // rootId => [subId, subId, ...]
         $subByParent = [];
-        if (! empty($allGoalCategoryIds)) {
-            $subs = DB::table('subcategories')
-                ->whereIn('category_id', $allGoalCategoryIds)
-                ->where('is_active', true)
-                ->get(['id', 'category_id']);
-
-            foreach ($allGoalCategoryIds as $cid) {
-                $subByParent[(int) $cid] = [];
+        foreach ($expenseRootIds as $cid) {
+            $subByParent[$cid] = [];
+        }
+        foreach ($subs as $s) {
+            $sid = (int) $s->id;
+            $cid = (int) $s->category_id;
+            $subsInfo[$sid] = ['category_id' => $cid, 'name' => (string) $s->name];
+            if (! isset($subByParent[$cid])) {
+                $subByParent[$cid] = [];
             }
-            foreach ($subs as $s) {
-                $subByParent[(int) $s->category_id][] = (int) $s->id;
-            }
+            $subByParent[$cid][] = $sid;
         }
 
-        // ---------------- Gastos por mês/categoria ----------------
-        // Agora com JOIN em transaction_categories (tc)
+        // ---------------- Gastos por mês/categoria + detalhamento por sub ----------------
         $hasType = Schema::hasColumn('transactions', 'type');
 
         // [ym][category_id] = total gasto (positivo)
         $spentByMonthCat = [];
+        // [ym] = total geral do mês
+        $totalSpentByMonth = [];
+        // [ym][category_id] = [ [id, name, spent], ... ]  (subcategorias daquele root)
+        $spentSubsByMonthCat = [];
 
         foreach ($months as $m) {
             $ym = $m->format('Y-m');
@@ -132,77 +150,125 @@ class ClientGoalController extends Controller
                 ->groupBy('tc.category_id', 'tc.subcategory_id')
                 ->get();
 
-            // Indexa por categoria "raiz"
-            $byRoot = []; // root_category_id => soma positiva
+            $byRoot = [];
+            $bySub = [];
+            $monthTotal = 0.0;
+
             foreach ($rows as $r) {
                 $catId = (int) ($r->category_id ?? 0);
                 $subId = (int) ($r->subcategory_id ?? 0);
                 $sum = (float) $r->total_amount;
 
-                // Se a subcategoria pertence a alguma raiz, usa a raiz correspondente
+                // Descobre o root (categoria de despesas)
                 $rootId = $catId;
-                foreach ($subByParent as $root => $subs) {
-                    if ($subId && in_array($subId, $subs, true)) {
-                        $rootId = (int) $root;
-                        break;
-                    }
+                if ($subId && isset($subsInfo[$subId])) {
+                    $rootId = (int) $subsInfo[$subId]['category_id'];
                 }
 
-                if (! $rootId) {
-                    // Transação sem categoria definida: ignora no comparativo de metas
+                // Mantém apenas categorias do grupo Despesas
+                if (! $rootId || ! in_array($rootId, $expenseRootIds, true)) {
                     continue;
                 }
 
                 $byRoot[$rootId] = ($byRoot[$rootId] ?? 0.0) + $sum;
+                $monthTotal += $sum;
+
+                // Detalhamento por sub
+                $subKey = $subId ?: 0; // 0 = “Sem subcategoria”
+                if (! isset($bySub[$rootId][$subKey])) {
+                    $bySub[$rootId][$subKey] = [
+                        'id' => $subKey,
+                        'name' => $subId ? $subsInfo[$subId]['name'] : '(Sem subcategoria)',
+                        'spent' => 0.0,
+                    ];
+                }
+                $bySub[$rootId][$subKey]['spent'] += $sum;
+            }
+
+            // Se tiver filtro por categoria, restringe e recalcula total
+            if ($filterCategoryId) {
+                $byRoot = array_key_exists($filterCategoryId, $byRoot)
+                    ? [$filterCategoryId => $byRoot[$filterCategoryId]]
+                    : [];
+                $bySub = array_key_exists($filterCategoryId, $bySub)
+                    ? [$filterCategoryId => $bySub[$filterCategoryId]]
+                    : [];
+                $monthTotal = array_sum($byRoot);
+            }
+
+            // Ordena subcategorias por gasto desc
+            foreach ($bySub as $rid => $items) {
+                usort($items, fn ($a, $b) => $b['spent'] <=> $a['spent']);
+                $bySub[$rid] = array_values($items);
             }
 
             $spentByMonthCat[$ym] = $byRoot;
+            $totalSpentByMonth[$ym] = $monthTotal;
+            $spentSubsByMonthCat[$ym] = $bySub;
         }
 
-        // ---------------- Monta payload para a view ----------------
-        $cards = []; // cada mês com suas categorias (meta/gasto/saldo)
+        // ---------------- Monta payload p/ view ----------------
+        $cards = [];
 
         foreach ($months as $m) {
             $ym = $m->format('Y-m');
-            $lbl = $m->locale('pt_BR')->translatedFormat('F/Y'); // ex.: outubro/2025
+            $lbl = $m->locale('pt_BR')->translatedFormat('F/Y');
+
+            $catsWithGoals = array_keys($goalsByMonthCat[$ym] ?? []);
+            $catsWithSpent = array_keys($spentByMonthCat[$ym] ?? []);
+            $allCatIdsForMonth = array_values(array_unique(array_merge($catsWithGoals, $catsWithSpent)));
+
+            if ($filterCategoryId) {
+                $allCatIdsForMonth = array_values(array_intersect($allCatIdsForMonth, [$filterCategoryId]));
+            }
+
             $list = [];
-
-            $cats = $goalsByMonthCat[$ym] ?? [];
-
-            foreach ($cats as $cid => $meta) {
-                $limit = (float) $meta['limit_amount'];
+            foreach ($allCatIdsForMonth as $cid) {
+                $limit = isset($goalsByMonthCat[$ym][$cid]) ? (float) $goalsByMonthCat[$ym][$cid]['limit_amount'] : null;
+                $name = $goalsByMonthCat[$ym][$cid]['category_name'] ?? ($expenseRootMap[$cid] ?? 'Categoria');
                 $spent = (float) ($spentByMonthCat[$ym][$cid] ?? 0.0);
-                $saldo = $limit - $spent;
-                $pct = $limit > 0 ? min(100, (int) round(($spent / $limit) * 100)) : 0;
+
+                if ($limit === null) {
+                    $balance = null;
+                    $percent = null;
+                } else {
+                    $balance = $limit - $spent;
+                    $percent = $limit > 0 ? min(100, (int) round(($spent / $limit) * 100)) : 0;
+                }
 
                 $list[] = [
                     'category_id' => (int) $cid,
-                    'category_name' => (string) $meta['category_name'],
+                    'category_name' => (string) $name,
                     'limit' => $limit,
                     'spent' => $spent,
-                    'balance' => $saldo,
-                    'percent' => $pct,
+                    'balance' => $balance,
+                    'percent' => $percent,
                 ];
             }
 
-            // Ordena por maior % gasto
-            usort($list, fn ($a, $b) => $b['percent'] <=> $a['percent']);
+            usort($list, function ($a, $b) {
+                if (! is_null($a['percent']) && ! is_null($b['percent'])) {
+                    return $b['percent'] <=> $a['percent'];
+                }
+
+                return $b['spent'] <=> $a['spent'];
+            });
 
             $cards[] = [
                 'ym' => $ym,
                 'label' => mb_convert_case($lbl, MB_CASE_TITLE, 'UTF-8'),
                 'items' => $list,
+                'total_spent' => (float) ($totalSpentByMonth[$ym] ?? 0.0),
+                // envia o detalhamento daquele mês (usado no modal)
+                'subs_breakdown' => $spentSubsByMonthCat[$ym] ?? [],
             ];
         }
 
-        // Dropdown de categorias (somente as que têm meta em algum mês do período)
-        $categoryOptions = [];
-        if (! empty($allGoalCategoryIds)) {
-            $categoryOptions = Category::query()
-                ->whereIn('id', $allGoalCategoryIds)
-                ->orderBy('name')
-                ->get(['id', 'name']);
-        }
+        // Dropdown (apenas despesas)
+        $categoryOptions = Category::query()
+            ->whereIn('id', array_map('intval', array_keys($expenseRootMap->toArray())))
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         return view('consultants.clients.goals.index', [
             'consultantId' => $consultant,

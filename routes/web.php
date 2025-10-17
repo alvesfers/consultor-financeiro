@@ -140,6 +140,7 @@ Route::prefix('{consultant}/client')
         Route::get('invoices', [ClientInvoiceController::class, 'index'])->name('invoices.index');
         Route::get('invoices/{invoice}', [ClientInvoiceController::class, 'show'])->name('invoices.show');
         Route::post('invoices/{invoice}/mark-paid', [ClientInvoiceController::class, 'markPaid'])->name('invoices.markPaid');
+        Route::post('invoices/{invoice}/pay', [ClientInvoiceController::class, 'pay'])->name('invoices.pay');
 
         Route::get('goals', [ClientGoalController::class, 'index'])->name('goals.index');
 

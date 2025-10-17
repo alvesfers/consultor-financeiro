@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Account;
 use App\Models\Card;
 use App\Models\Client;
+use App\Models\Transaction;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -16,6 +18,7 @@ class ClientInvoiceController extends Controller
     public function index(Request $request, $consultant)
     {
         $user = $request->user();
+        $tz = $user->timezone ?? 'America/Sao_Paulo';
 
         /** @var Client $client */
         $client = Client::query()
@@ -24,14 +27,16 @@ class ClientInvoiceController extends Controller
             ->firstOrFail();
 
         $clientId = $client->id;
+        $asOfDate = Carbon::now($tz)->toDateString(); // para cálculo de overdue
 
         // -------- Filtros
         $bankId = $request->integer('bank_id');
         $accountId = $request->integer('account_id');
         $cardId = $request->integer('card_id');
         $status = $request->input('status');  // 'open' | 'paid' | 'overdue'
-        $month = $request->input('month');   // 'YYYY-MM'
-        $q = trim((string) $request->input('q'));
+        $year = $request->integer('year');
+        $month = $request->integer('month'); // 1-12
+        $q = trim((string) $request->input('q', ''));
 
         // -------- Fontes para selects
         $banks = DB::table('banks')->orderBy('name')->get(['id', 'name']);
@@ -62,15 +67,16 @@ class ClientInvoiceController extends Controller
                 ci.pay_account_name,
                 ci.month_ref,
                 ci.due_on,
-                ci.purchases_amount as total_amount,
-                ci.credits_amount   as paid_amount,
+                ci.purchases_amount     as total_amount,
+                ci.credits_amount       as paid_amount,
                 ci.remaining_amount,
+                ci.unpaid_debit_count,
                 CASE
-                    WHEN ci.remaining_amount <= 0 THEN 'paid'
-                    WHEN ci.remaining_amount  > 0 AND ci.due_on < CURDATE() THEN 'overdue'
+                    WHEN ci.unpaid_debit_count = 0 THEN 'paid'
+                    WHEN ci.remaining_amount  > 0 AND ci.due_on < ? THEN 'overdue'
                     ELSE 'open'
                 END as status
-            ");
+            ", [$asOfDate]);
 
         // ====== Filtros
         if ($bankId) {
@@ -85,8 +91,11 @@ class ClientInvoiceController extends Controller
         if ($status) {
             $sub->where('status', $status);
         }
+        if ($year) {
+            $sub->whereRaw('YEAR(ci.month_ref) = ?', [$year]);
+        }
         if ($month) {
-            $sub->whereRaw("DATE_FORMAT(ci.month_ref, '%Y-%m') = ?", [$month]);
+            $sub->whereRaw('MONTH(ci.month_ref) = ?', [$month]);
         }
         if ($q !== '') {
             $like = '%'.str_replace(' ', '%', $q).'%';
@@ -126,6 +135,7 @@ class ClientInvoiceController extends Controller
                 'account_id' => $accountId,
                 'card_id' => $cardId,
                 'status' => $status,
+                'year' => $year,
                 'month' => $month,
                 'q' => $q,
             ],
@@ -170,14 +180,14 @@ class ClientInvoiceController extends Controller
             ->orderBy('t.date')
             ->get();
 
-        return view('client.invoices.show', [
+        return view('consultants.clients.invoices.show', [
             'transactions' => $transactions,
             'monthKey' => $group->month_key,
         ]);
     }
 
     /**
-     * Marca todas as transactions do grupo (cartão + mês) como pagas.
+     * Marca todas as transactions do grupo (cartão + mês) como pagas (não cria lançamento na conta).
      */
     public function markPaid(Request $request, $consultant, $invoice)
     {
@@ -203,7 +213,7 @@ class ClientInvoiceController extends Controller
 
         abort_unless($group, 404);
 
-        // Seleciona os IDs das transactions do grupo e faz update em lote
+        // Seleciona e atualiza
         [$monthRefExpr] = $this->monthAndDueExpressions('t', 'c');
 
         $ids = DB::table('transactions as t')
@@ -220,6 +230,92 @@ class ClientInvoiceController extends Controller
         }
 
         return back()->with('success', 'Fatura marcada como paga.');
+    }
+
+    /**
+     * Paga a fatura do grupo (cartão + mês):
+     * - cria a saída na conta de pagamento (method=credit_card_invoice)
+     * - marca as transactions do grupo como pagas
+     */
+    public function pay(Request $request, $consultant, $invoice)
+    {
+        $user = $request->user();
+        $tz = $user->timezone ?? 'America/Sao_Paulo';
+
+        /** @var Client $client */
+        $client = Client::query()
+            ->where('user_id', $user->id)
+            ->where('consultant_id', $consultant)
+            ->firstOrFail();
+
+        $clientId = $client->id;
+
+        // Descobre o grupo + captura dados necessários (card + month + valores)
+        $base = $this->baseInvoiceAggregationQuery($clientId);
+
+        $group = DB::query()->fromSub($base, 'ci')
+            ->selectRaw('
+                ci.card_id,
+                ci.card_name,
+                ci.pay_account_id,
+                ci.month_ref,
+                ci.due_on,
+                ci.remaining_amount,
+                ci.unpaid_debit_count
+            ')
+            ->whereRaw("CRC32(CONCAT(ci.card_id, '|', DATE_FORMAT(ci.month_ref, '%Y-%m'))) = ?", [$invoice])
+            ->first();
+
+        abort_unless($group, 404);
+
+        // Verificações
+        if (! $group->pay_account_id) {
+            return back()->withErrors('Defina a conta de pagamento para este cartão.')->withInput();
+        }
+
+        $toPay = (float) max(0, $group->remaining_amount); // só paga se houver restante
+        if ($toPay <= 0 || (int) $group->unpaid_debit_count === 0) {
+            return back()->with('success', 'Não há valor a pagar nesta fatura.');
+        }
+
+        // Data do pagamento: fornecida ou due_on
+        $payDate = $request->date
+            ? Carbon::parse($request->date, $tz)
+            : Carbon::parse($group->due_on, $tz);
+
+        // Marcação + lançamento
+        [$monthRefExpr] = $this->monthAndDueExpressions('t', 'c');
+
+        DB::transaction(function () use ($clientId, $group, $toPay, $payDate, $monthRefExpr) {
+
+            // 1) Lançamento na conta de pagamento (saída)
+            Transaction::create([
+                'client_id' => $clientId,
+                'account_id' => $group->pay_account_id,
+                'card_id' => null,
+                'date' => $payDate->toDateString(),
+                'amount' => -$toPay,
+                'status' => 'confirmed',
+                'method' => 'credit_card_invoice',
+                'notes' => "Pagamento fatura {$group->card_name} (".Carbon::parse($group->month_ref)->format('Y-m').')',
+            ]);
+
+            // 2) Marcar todas as compras do ciclo como pagas
+            $ids = DB::table('transactions as t')
+                ->join('cards as c', 'c.id', '=', 't.card_id')
+                ->where('t.client_id', $clientId)
+                ->where('t.card_id', $group->card_id)
+                ->whereRaw("DATE_FORMAT($monthRefExpr, '%Y-%m') = ?", [Carbon::parse($group->month_ref)->format('Y-m')])
+                ->pluck('t.id');
+
+            if ($ids->isNotEmpty()) {
+                DB::table('transactions')
+                    ->whereIn('id', $ids)
+                    ->update(['invoice_paid' => 1]);
+            }
+        });
+
+        return back()->with('success', 'Fatura paga com sucesso!');
     }
 
     // ============================================================
@@ -251,7 +347,7 @@ class ClientInvoiceController extends Controller
             DATE_FORMAT($cycleBase, '%Y-%m-01')
         )";
 
-        // due_on: pega o dia 'due_day' dentro do mês_ref (clamp para o último dia)
+        // due_on: pega o dia 'due_day' dentro do mês_ref (limitado ao último dia do mês)
         $dueOnExpr = "DATE_ADD(
             $monthRefExpr,
             INTERVAL LEAST(COALESCE($c.due_day, 10), DAY(LAST_DAY($cycleBase))) - 1 DAY
@@ -261,8 +357,9 @@ class ClientInvoiceController extends Controller
     }
 
     /**
-     * Monta a query base agregando por cartão + mês de referência,
-     * já trazendo totais de compras (debits), créditos e remaining.
+     * Query base agregando por cartão + mês de referência,
+     * somando compras (débitos), créditos (estornos) e restante,
+     * e contando quantas compras estão com `invoice_paid = 0`.
      */
     private function baseInvoiceAggregationQuery(int $clientId)
     {
@@ -284,10 +381,14 @@ class ClientInvoiceController extends Controller
                 b.name as bank_name,
                 $monthRefExpr as month_ref,
                 $dueOnExpr    as due_on,
+
+                -- totais
                 SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END) as purchases_amount,
                 SUM(CASE WHEN t.amount > 0 THEN  t.amount ELSE 0 END) as credits_amount,
                 SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END)
-                  - SUM(CASE WHEN t.amount > 0 THEN  t.amount ELSE 0 END) as remaining_amount
+                  - SUM(CASE WHEN t.amount > 0 THEN  t.amount ELSE 0 END) as remaining_amount,
+
+                SUM(CASE WHEN t.amount < 0 AND COALESCE(t.invoice_paid,0) = 0 THEN 1 ELSE 0 END) as unpaid_debit_count
             ")
             ->groupBy([
                 'c.id', 'c.name', 'c.last4',
