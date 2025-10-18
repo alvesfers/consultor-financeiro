@@ -9,6 +9,8 @@ use App\Http\Controllers\ClientDashboardController;
 use App\Http\Controllers\ClientGoalController;
 use App\Http\Controllers\ClientInvoiceController;
 use App\Http\Controllers\ClientTransactionController;
+use App\Http\Controllers\ClientTransactionsController;
+
 use App\Http\Controllers\Consultant\CategoryController as ConsultantCategoryController;
 use App\Http\Controllers\Consultant\ClientController as ConsultantClientController;
 use App\Http\Controllers\Consultant\TaskController as ConsultantTaskController;
@@ -150,7 +152,8 @@ Route::prefix('{consultant}/client')
             ->name('cards.invoices.pay');
 
         // Listar transações (se existir essa página)
-        Route::get('transactions', [ClientAccountController::class, 'index'])->name('transactions.index');
+        Route::get('transactions', [ClientTransactionsController::class, 'index'])->name('transactions.index');
+        Route::get('transactions/export', [ClientTransactionsController::class, 'index'])->name('transactions.export');
     });
 
 require __DIR__.'/auth.php';

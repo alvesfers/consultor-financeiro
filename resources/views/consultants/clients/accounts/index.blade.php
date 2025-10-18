@@ -25,14 +25,27 @@
         };
     </script>
 
-    <div class="max-w-[112rem] mx-auto px-4 py-4" x-data="accountsPage()">
-        {{-- Header --}}
+    <div class="max-w-[112rem] mx-auto px-4 py-4 pb-24 sm:pb-10" x-data="accountsPage()">
+        {{-- ===================== HEADER ===================== --}}
         <div class="flex items-center justify-between mb-4">
-            <div>
-                <h1 class="text-xl md:text-2xl font-semibold">Minhas contas</h1>
+            <div class="min-w-0">
+                <h1 class="text-xl md:text-2xl font-semibold truncate">Minhas contas</h1>
                 <p class="opacity-70 text-xs md:text-sm">Gerencie contas, cartões e visualize o extrato combinado.</p>
             </div>
-            <div class="flex items-center gap-2">
+
+            {{-- Ações: no mobile vira dropdown compacto --}}
+            <div class="md:hidden">
+                <details class="dropdown dropdown-end">
+                    <summary class="btn btn-ghost btn-sm"><i class="fa-solid fa-plus"></i></summary>
+                    <ul class="menu dropdown-content z-[5] p-2 shadow bg-base-200 rounded-box w-52 border border-base-300">
+                        <li><a @click.prevent="openNewAccount()"><i class="fa-solid fa-university"></i> Nova conta</a></li>
+                        <li><a @click.prevent="openNewCard()"><i class="fa-solid fa-credit-card"></i> Adicionar cartão</a>
+                        </li>
+                    </ul>
+                </details>
+            </div>
+
+            <div class="hidden md:flex items-center gap-2">
                 <button class="btn btn-sm" @click.prevent="openNewAccount()">
                     <i class="fa-solid fa-university mr-2"></i> Nova conta
                 </button>
@@ -42,7 +55,7 @@
             </div>
         </div>
 
-        {{-- ===== CARROSSEL DE CONTAS (apenas checking) ===== --}}
+        {{-- ===================== CARROSSEL DE CONTAS (checking) ===================== --}}
         <div class="relative mb-4">
             <button type="button"
                 class="btn btn-circle btn-ghost btn-xs md:btn-sm absolute left-1 top-1/2 -translate-y-1/2 z-10 shadow"
@@ -80,11 +93,15 @@
                         @endphp
 
                         <button type="button"
-                            class="shrink-0 w-[200px] md:w-[240px] rounded-xl p-3 border hover:shadow-sm transition-all text-left snap-start"
+                            class="shrink-0 w-[200px] md:w-[240px] rounded-2xl p-3 border hover:shadow-sm transition-all text-left snap-start relative overflow-hidden"
                             :class="selectedAccountIndex === {{ $i }} ?
                                 'ring-2 ring-offset-1 ring-base-300 bg-base-100' : 'bg-base-200/50'"
                             style="background-color: {{ $bg }};" @click="selectAccount({{ $i }})">
-                            <div class="flex items-center gap-2">
+                            <div class="absolute -right-6 -top-6 w-28 h-20 blur-2xl opacity-30 pointer-events-none"
+                                style="background: radial-gradient(90px 60px at center, {{ $pri }}, transparent 70%);">
+                            </div>
+
+                            <div class="flex items-center gap-2 relative">
                                 <div class="w-9 h-9 rounded-lg bg-white grid place-items-center overflow-hidden">
                                     @if ($logo)
                                         <img src="{{ $logo }}" alt="{{ $bankName }}"
@@ -102,7 +119,7 @@
                             </div>
 
                             <div class="mt-2 text-[11px] opacity-70">Saldo</div>
-                            <div class="text-base font-bold leading-5" style="color: {{ $pri }}">
+                            <div class="text-base font-bold leading-5 relative z-10" style="color: {{ $pri }}">
                                 R$ {{ number_format($acc['balance_total'] ?? 0, 2, ',', '.') }}
                             </div>
                         </button>
@@ -119,18 +136,19 @@
             </button>
         </div>
 
-        {{-- ===== LAYOUT PRINCIPAL: Detalhes da conta + Extrato ===== --}}
+        {{-- ===================== LAYOUT PRINCIPAL ===================== --}}
         <div x-show="accounts.length" class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            {{-- ===== Coluna 1: Detalhes da conta + Cartões ===== --}}
             <div class="xl:col-span-1 space-y-4">
                 {{-- Cabeçalho da conta --}}
                 <div class="card bg-base-100 shadow-sm">
                     <div class="card-body p-4">
                         <div class="flex items-center justify-between gap-3">
                             <div class="flex items-center gap-3 min-w-0">
-                                <template x-if="currentAccount().bank && currentAccount().bank.logo_svg">
+                                <template x-if="currentAccount()?.bank?.logo_svg">
                                     <img :src="assetPath(currentAccount().bank.logo_svg)" class="w-9 h-9 object-contain" />
                                 </template>
-                                <template x-if="!(currentAccount().bank && currentAccount().bank.logo_svg)">
+                                <template x-if="!(currentAccount()?.bank?.logo_svg)">
                                     <div class="avatar placeholder">
                                         <div
                                             class="rounded w-9 h-9 bg-neutral text-neutral-content grid place-items-center">
@@ -138,32 +156,33 @@
                                         </div>
                                     </div>
                                 </template>
+
                                 <div class="min-w-0">
                                     <div class="font-semibold text-sm truncate"
-                                        x-text="(currentAccount().bank?.name || 'Sem banco')"></div>
-                                    <div class="text-xs opacity-70 truncate" x-text="currentAccount().name || 'Conta'">
+                                        x-text="(currentAccount()?.bank?.name || 'Sem banco')"></div>
+                                    <div class="text-xs opacity-70 truncate" x-text="currentAccount()?.name || 'Conta'">
                                     </div>
                                 </div>
                             </div>
                             <div class="text-right">
                                 <div class="text-[11px] opacity-70">Saldo</div>
                                 <div class="text-lg font-bold">R$ <span
-                                        x-text="formatMoney(currentAccount().balance_total)"></span></div>
+                                        x-text="formatMoney(currentAccount()?.balance_total)"></span></div>
                             </div>
                         </div>
                         <div class="mt-2 text-[11px] opacity-70">
-                            Moeda: <span x-text="currentAccount().currency || 'BRL'"></span>
+                            Moeda: <span x-text="currentAccount()?.currency || 'BRL'"></span>
                         </div>
                     </div>
                 </div>
 
-                {{-- Cartões da conta --}}
+                {{-- Cartões vinculados (grid responsivo) --}}
                 <div class="card bg-base-100 shadow-sm">
                     <div class="card-body p-4">
                         <div class="flex items-center justify-between mb-2">
                             <h3 class="font-semibold text-sm">Cartões vinculados</h3>
                             <a href="#" class="btn btn-xs btn-primary"
-                                @click.prevent="openNewCard(currentAccount().bank_id)">
+                                @click.prevent="openNewCard(currentAccount()?.bank_id)">
                                 <i class="fa-solid fa-plus mr-1"></i> Cartão
                             </a>
                         </div>
@@ -175,13 +194,14 @@
                         <div class="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-2 gap-3"
                             x-show="cardsOfCurrentAccount().length">
                             <template x-for="c in cardsOfCurrentAccount()" :key="c.id">
-                                <div class="border rounded-lg p-3 hover:bg-base-200/50 transition">
+                                <div class="border rounded-xl p-3 hover:bg-base-200/50 transition">
                                     <div class="flex items-start justify-between gap-2">
                                         <div class="min-w-0">
                                             <div class="font-semibold text-sm truncate" x-text="c.name"></div>
                                             <div class="text-[11px] opacity-70">
                                                 <span x-text="c.brand || 'Cartão'"></span>
-                                                <template x-if="c.last4"> · final <span x-text="c.last4"></span></template>
+                                                <template x-if="c.last4"> · final <span
+                                                        x-text="c.last4"></span></template>
                                             </div>
                                         </div>
                                         <div class="text-right">
@@ -226,12 +246,10 @@
                                                     </label>
 
                                                     <div class="col-span-2 grid grid-cols-2 gap-3 text-[11px]">
-                                                        <div>
-                                                            <span class="opacity-70">Fechamento</span>
+                                                        <div><span class="opacity-70">Fechamento</span>
                                                             <div x-text="expanded[c.id].card.close_day || '-'"></div>
                                                         </div>
-                                                        <div>
-                                                            <span class="opacity-70">Vencimento</span>
+                                                        <div><span class="opacity-70">Vencimento</span>
                                                             <div x-text="expanded[c.id].card.due_day || '-'"></div>
                                                         </div>
                                                     </div>
@@ -288,41 +306,124 @@
                 </div>
             </div>
 
-            {{-- Extrato combinado (ocupa 2/3) --}}
+            {{-- ===== Colunas 2-3: Extrato combinado ===== --}}
             <div class="xl:col-span-2 space-y-4">
                 <div class="card bg-base-100 shadow-sm">
                     <div class="card-body p-4">
-                        {{-- Filtros slim --}}
-                        <div class="flex flex-wrap items-end gap-2">
-                            <div>
-                                <label class="label text-[11px] pt-0 pb-1">Início</label>
-                                <input type="date" class="input input-bordered input-sm" x-model="filters.start" />
+                        {{-- Filtros: dropdown no mobile, linha no md+ --}}
+                        <div class="flex items-center justify-between gap-2">
+                            <h3 class="font-semibold">Extrato</h3>
+
+                            {{-- mobile --}}
+                            <div class="md:hidden">
+                                <details class="dropdown dropdown-end">
+                                    <summary class="btn btn-ghost btn-sm"><i class="fa-solid fa-sliders"></i></summary>
+                                    <div
+                                        class="menu dropdown-content bg-base-200 rounded-box w-72 p-3 mt-2 border border-base-300 z-[5]">
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <label class="form-control">
+                                                <span class="label-text text-xs">Início</span>
+                                                <input type="date" class="input input-bordered input-sm"
+                                                    x-model="filters.start" />
+                                            </label>
+                                            <label class="form-control">
+                                                <span class="label-text text-xs">Fim</span>
+                                                <input type="date" class="input input-bordered input-sm"
+                                                    x-model="filters.end" />
+                                            </label>
+                                        </div>
+
+                                        <div class="grid grid-cols-2 gap-2 mt-2">
+                                            <label class="form-control">
+                                                <span class="label-text text-xs">Tipo</span>
+                                                <select class="select select-bordered select-sm rounded-lg w-full pr-9"
+                                                    x-model="filters.type">
+                                                    <option value="all">🔄 Todos</option>
+                                                    <option value="in">💰 Entradas</option>
+                                                    <option value="out">💸 Saídas</option>
+                                                </select>
+                                            </label>
+
+                                            <label class="form-control">
+                                                <span class="label-text text-xs">Origem</span>
+                                                <select class="select select-bordered select-sm rounded-lg w-full pr-9"
+                                                    x-model="filters.source">
+                                                    <option value="all">🏦 Contas e Cartões</option>
+                                                    <option value="accounts">🏧 Só Contas</option>
+                                                    <option value="cards">💳 Só Cartões</option>
+                                                </select>
+                                            </label>
+                                        </div>
+
+                                        <div class="mt-3 flex justify-end">
+                                            <button class="btn btn-xs btn-outline" @click="resetFilters()">Limpar</button>
+                                        </div>
+                                    </div>
+                                </details>
                             </div>
-                            <div>
-                                <label class="label text-[11px] pt-0 pb-1">Fim</label>
-                                <input type="date" class="input input-bordered input-sm" x-model="filters.end" />
+
+                            {{-- md+ --}}
+                            <div class="hidden md:flex flex-wrap items-end gap-2 ml-auto">
+                                <div>
+                                    <label class="label text-[11px] pt-0 pb-1">Início</label>
+                                    <input type="date" class="input input-bordered input-sm"
+                                        x-model="filters.start" />
+                                </div>
+                                <div>
+                                    <label class="label text-[11px] pt-0 pb-1">Fim</label>
+                                    <input type="date" class="input input-bordered input-sm" x-model="filters.end" />
+                                </div>
+                                <div>
+                                    <label class="label text-[11px] pt-0 pb-1">Tipo</label>
+                                    <select class="select select-bordered select-sm" x-model="filters.type">
+                                        <option value="all">Todos</option>
+                                        <option value="in">Entradas</option>
+                                        <option value="out">Saídas</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="label text-[11px] pt-0 pb-1">Origem</label>
+                                    <select class="select select-bordered select-sm" x-model="filters.source">
+                                        <option value="all">Contas e Cartões</option>
+                                        <option value="accounts">Só Contas</option>
+                                        <option value="cards">Só Cartões</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-xs btn-outline ml-auto" @click="resetFilters()">Limpar</button>
                             </div>
-                            <div>
-                                <label class="label text-[11px] pt-0 pb-1">Tipo</label>
-                                <select class="select select-bordered select-sm" x-model="filters.type">
-                                    <option value="all">Todos</option>
-                                    <option value="in">Entradas</option>
-                                    <option value="out">Saídas</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="label text-[11px] pt-0 pb-1">Origem</label>
-                                <select class="select select-bordered select-sm" x-model="filters.source">
-                                    <option value="all">Contas e Cartões</option>
-                                    <option value="accounts">Só Contas</option>
-                                    <option value="cards">Só Cartões</option>
-                                </select>
-                            </div>
-                            <button class="btn btn-xs btn-outline ml-auto" @click="resetFilters()">Limpar</button>
                         </div>
 
-                        {{-- Tabela compacta com header sticky --}}
-                        <div class="overflow-auto mt-3 max-h-[520px]">
+                        {{-- MOBILE: Extrato em cards --}}
+                        <div class="md:hidden mt-3 space-y-3">
+                            <template x-if="filteredTransactions().length === 0">
+                                <div class="text-sm opacity-70">Sem transações.</div>
+                            </template>
+
+                            <template x-for="tx in filteredTransactions()" :key="tx.id + '-' + (tx._source || '')">
+                                <div class="rounded-xl border border-base-300 p-3">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div class="min-w-0">
+                                            <div class="text-sm font-medium truncate" x-text="tx.description || '—'">
+                                            </div>
+                                            <div class="text-xs opacity-70 mt-0.5">
+                                                <span x-text="formatDate(tx.created_at)"></span>
+                                                <span class="opacity-40"> • </span>
+                                                <span x-text="tx._source || '—'"></span>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div :class="Number(tx.amount) < 0 ? 'text-error' : 'text-success'"
+                                                class="font-semibold">
+                                                R$ <span x-text="formatMoney(tx.amount)"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        {{-- DESKTOP/TABLET: tabela compacta com header sticky --}}
+                        <div class="hidden md:block overflow-auto mt-3 max-h-[520px]">
                             <table class="table table-sm">
                                 <thead class="sticky top-0 bg-base-100 z-10">
                                     <tr>
@@ -363,7 +464,7 @@
             </div>
         </div>
 
-        {{-- ===== MODAIS ===== --}}
+        {{-- ===================== MODAIS ===================== --}}
         <dialog id="newAccountModal" class="modal">
             <div class="modal-box max-w-lg">
                 <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
@@ -478,6 +579,7 @@
         </dialog>
     </div>
 @endsection
+
 
 @push('head')
     <script>

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="light">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="ekon">
 
 <head>
     <meta charset="utf-8">
@@ -10,15 +10,33 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     @stack('head')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+
+    <style>
+        /* iOS safe-area para Dock/FAB */
+        :root {
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        .safe-bottom {
+            padding-bottom: calc(1rem + var(--safe-bottom));
+        }
+
+        .dock-safe {
+            padding-bottom: var(--safe-bottom);
+        }
+
+        .fab-safe {
+            bottom: calc(1rem + var(--safe-bottom));
+        }
+    </style>
 </head>
 
 <body class="min-h-screen" x-data="{
     collapsed: JSON.parse(localStorage.getItem('sbCollapsed') ?? 'false'),
-    toggle() {
-        this.collapsed = !this.collapsed;
-        localStorage.setItem('sbCollapsed', JSON.stringify(this.collapsed));
-    }
+    toggle() { this.collapsed = !this.collapsed;
+        localStorage.setItem('sbCollapsed', JSON.stringify(this.collapsed)); }
 }">
+
     @php
         $user = auth()->user();
         $role = $user->role ?? null;
@@ -27,7 +45,7 @@
         // helper de rota com parâmetro do consultor
         $rConsultant = fn($name) => $consultantId ? route($name, ['consultant' => $consultantId]) : route('dashboard');
 
-        // helper p/ FA ícones (evita redeclarar em includes)
+        // helper p/ FA ícones
         if (!function_exists('fa')) {
             function fa($classes)
             {
@@ -42,8 +60,6 @@
             'tasks' => fa('fa-solid fa-list-check'),
             'categories' => fa('fa-solid fa-tags'),
             'settings' => fa('fa-solid fa-gear'),
-
-            // ===== novos itens do menu do cliente =====
             'accounts' => fa('fa-solid fa-wallet'),
             'invoices' => fa('fa-solid fa-file-invoice-dollar'),
             'monthly_goals' => fa('fa-solid fa-bullseye'),
@@ -51,17 +67,19 @@
             'objectives' => fa('fa-solid fa-flag-checkered'),
             'investments' => fa('fa-solid fa-chart-line'),
             'reports' => fa('fa-solid fa-file-lines'),
+            'plus' => fa('fa-solid fa-plus'),
+            'transfer' => fa('fa-solid fa-arrow-right-arrow-left'),
+            'goal' => fa('fa-solid fa-bullseye'),
+            'clientAdd' => fa('fa-solid fa-user-plus'),
+            'taskAdd' => fa('fa-solid fa-square-plus'),
             'default' => fa('fa-regular fa-circle'),
         ];
 
-        // href seguro: usa $rConsultant se a rota existe, senão '#'
         $cHref = function (string $name) use ($rConsultant) {
             return \Illuminate\Support\Facades\Route::has($name) ? $rConsultant($name) : '#';
         };
 
-        $icon = function (string $key) use ($icons) {
-            return $icons[$key] ?? ($icons['default'] ?? '<i class="fa-regular fa-circle"></i>');
-        };
+        $icon = fn(string $key) => $icons[$key] ?? $icons['default'];
 
         $collapsedLink = function (string $pattern) {
             $isActive = request()->routeIs($pattern);
@@ -75,27 +93,40 @@
                 'aria' => $isActive ? 'page' : 'false',
             ];
         };
+
+        // helper pro estado ativo do Dock
+        $dockActive = fn(string $pattern) => request()->routeIs($pattern) ? 'dock-active' : '';
+
     @endphp
 
     <div class="drawer lg:drawer-open">
         <input id="app-drawer" type="checkbox" class="drawer-toggle" />
+
+        {{-- CONTENT --}}
         <div class="drawer-content flex flex-col">
 
             {{-- Topbar --}}
-            <div class="navbar bg-base-100 border-b border-base-300 px-4 sticky top-0 z-20">
+            <header class="navbar bg-base-100 border-b border-base-300 px-4 sticky top-0 z-30">
                 <div class="flex-none lg:hidden">
-                    <label for="app-drawer" aria-label="open sidebar" class="btn btn-ghost btn-square">
+                    <label for="app-drawer" aria-label="Abrir menu lateral" class="btn btn-ghost btn-square">
                         <i class="fa-solid fa-bars"></i>
                     </label>
                 </div>
 
-                <div class="flex-1">
-                    <a href="{{ route('home') }}" class="btn btn-ghost text-xl">
+                <div class="flex-1 min-w-0">
+                    <a href="{{ route('home') }}" class="btn btn-ghost text-xl truncate">
                         {{ config('app.name', 'Consultor Financeiro') }}
                     </a>
                 </div>
 
                 <div class="flex-none gap-2">
+                    {{-- (Opcional) Toggle de tema
+                <label class="swap swap-rotate mr-2">
+                    <input type="checkbox" class="theme-controller" value="synthwave"/>
+                    <i class="fa-regular fa-sun swap-off"></i>
+                    <i class="fa-regular fa-moon swap-on"></i>
+                </label> --}}
+
                     <div class="dropdown dropdown-end">
                         <div tabindex="0" role="button" class="btn btn-ghost">
                             <div class="flex items-center gap-2">
@@ -104,40 +135,101 @@
                                         <span class="text-xs">{{ strtoupper(substr($user->name ?? 'U', 0, 1)) }}</span>
                                     </div>
                                 </div>
-                                <span class="hidden sm:block">{{ $user->name ?? 'Usuário' }}</span>
+                                <span
+                                    class="hidden sm:block max-w-[12ch] truncate">{{ $user->name ?? 'Usuário' }}</span>
                             </div>
                         </div>
                         <ul tabindex="0"
-                            class="menu menu-sm dropdown-content bg-base-200 rounded-box z-[1] mt-3 w-52 p-2 shadow">
+                            class="menu menu-sm dropdown-content bg-base-200 rounded-box z-[60] mt-3 w-56 p-2 shadow">
                             <li><a href="{{ route('profile.edit') }}"><i class="fa-regular fa-user me-2"></i>Perfil</a>
                             </li>
                             <li>
                                 <form method="POST" action="{{ route('logout') }}">
                                     @csrf
-                                    <button type="submit"><i
-                                            class="fa-solid fa-right-from-bracket me-2"></i>Sair</button>
+                                    <button type="submit">
+                                        <i class="fa-solid fa-right-from-bracket me-2"></i>Sair
+                                    </button>
                                 </form>
                             </li>
                         </ul>
                     </div>
                 </div>
-            </div>
+            </header>
 
-            {{-- Main --}}
-            <main class="p-4 lg:p-6">
+            {{-- Main (padding extra no mobile por causa do Dock) --}}
+            <main class="p-4 lg:p-6 pb-24 sm:pb-10 safe-bottom">
                 @yield('content')
                 @include('partials.flash')
             </main>
+
+            {{-- DOCK: Bottom navigation (mobile) --}}
+            <nav class="sm:hidden fixed inset-x-0 bottom-0 z-40">
+                <div class="dock dock-md bg-base-100/95 backdrop-blur border-t border-base-300 dock-safe">
+                    @if ($role === 'client')
+                        <a href="{{ $cHref('client.dashboard') }}" class="{{ $dockActive('client.dashboard') }}">
+                            {!! $icon('dashboard') !!}<span class="dock-label">Início</span>
+                        </a>
+                        <a href="{{ $cHref('client.transactions.index') }}"
+                            class="{{ $dockActive('client.transactions*') }}">
+                            {!! $icon('transactions') !!}<span class="dock-label">Transações</span>
+                        </a>
+                        <a href="{{ $cHref('client.invoices.index') }}" class="{{ $dockActive('client.invoices*') }}">
+                            {!! $icon('invoices') !!}<span class="dock-label">Faturas</span>
+                        </a>
+                        <a href="{{ $cHref('client.accounts.index') }}" class="{{ $dockActive('client.accounts*') }}">
+                            {!! $icon('accounts') !!}<span class="dock-label">Contas</span>
+                        </a>
+                        <a href="{{ route('settings') }}" class="{{ $dockActive('settings*') }}">
+                            {!! $icon('settings') !!}<span class="dock-label">Config</span>
+                        </a>
+                    @elseif ($role === 'consultant')
+                        <a href="{{ $rConsultant('consultant.dashboard') }}"
+                            class="{{ $dockActive('consultant.dashboard') }}">
+                            {!! $icon('dashboard') !!}<span class="dock-label">Dashboard</span>
+                        </a>
+                        <a href="{{ $rConsultant('consultant.clients.index') }}"
+                            class="{{ $dockActive('consultant.clients.*') }}">
+                            {!! $icon('clients') !!}<span class="dock-label">Clientes</span>
+                        </a>
+                        <a href="{{ $rConsultant('consultant.tasks.index') }}"
+                            class="{{ $dockActive('consultant.tasks.*') }}">
+                            {!! $icon('tasks') !!}<span class="dock-label">Tarefas</span>
+                        </a>
+                        <a href="{{ $rConsultant('consultant.categories.index') }}"
+                            class="{{ $dockActive('consultant.categories.*') }}">
+                            {!! $icon('categories') !!}<span class="dock-label">Categorias</span>
+                        </a>
+                        <a href="{{ route('settings') }}" class="{{ $dockActive('settings*') }}">
+                            {!! $icon('settings') !!}<span class="dock-label">Config</span>
+                        </a>
+                    @elseif ($role === 'admin')
+                        <a href="{{ route('admin.dashboard') }}" class="{{ $dockActive('admin.dashboard') }}">
+                            {!! $icons['dashboard'] !!}<span class="dock-label">Dashboard</span>
+                        </a>
+                        <a href="{{ route('admin.consultants.index') }}"
+                            class="{{ $dockActive('admin.consultants.*') }}">
+                            {!! $icons['users'] !!}<span class="dock-label">Consultores</span>
+                        </a>
+                        <a href="{{ route('settings') }}" class="{{ $dockActive('settings*') }}">
+                            {!! $icons['settings'] !!}<span class="dock-label">Config</span>
+                        </a>
+                    @else
+                        <a href="{{ route('dashboard') }}" class="{{ $dockActive('dashboard') }}">
+                            {!! $icons['dashboard'] !!}<span class="dock-label">Dashboard</span>
+                        </a>
+                    @endif
+                </div>
+            </nav>
         </div>
 
-        {{-- Sidebar --}}
-        <div class="drawer-side">
-            <label for="app-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+        {{-- SIDEBAR --}}
+        <div class="drawer-side z-40">
+            <label for="app-drawer" aria-label="Fechar menu lateral" class="drawer-overlay"></label>
 
             <aside class="min-h-full border-r border-base-300 bg-base-200 transition-[width] duration-200 ease-in-out"
                 :class="collapsed ? 'lg:w-24' : 'lg:w-72'">
 
-                {{-- Header --}}
+                {{-- Header Sidebar --}}
                 <div class="px-4 py-4 flex items-center justify-between">
                     <div class="flex items-center gap-2" :class="collapsed ? 'mx-auto' : ''">
                         <div class="hidden lg:block" x-show="!collapsed">
@@ -145,14 +237,13 @@
                             <div class="text-xs opacity-70 capitalize">{{ $role ?? 'user' }}</div>
                         </div>
                     </div>
-
                     <button type="button" class="btn btn-ghost btn-sm hidden lg:flex" @click="toggle()"
                         :title="collapsed ? 'Expandir' : 'Recolher'">
                         <i class="fa-solid fa-angles-left transition" :class="collapsed ? '' : 'rotate-180'"></i>
                     </button>
                 </div>
 
-                {{-- Menus expandidos --}}
+                {{-- Menu expandido (desktop) --}}
                 <ul class="menu px-3 gap-2" x-show="!collapsed" x-transition>
                     @if ($role === 'admin')
                         <li>
@@ -275,7 +366,7 @@
                     @endif
                 </ul>
 
-                {{-- Menus colapsados --}}
+                {{-- Menu colapsado (desktop) --}}
                 <ul class="menu px-2 gap-4" x-show="collapsed" x-transition>
                     @if ($role === 'admin')
                         @php($c = $collapsedLink('admin.dashboard'))
@@ -286,7 +377,6 @@
                                 <span class="{{ $c['label'] }}">Dashboard</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('admin.consultants.*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Consultores">
                             <a href="{{ route('admin.consultants.index') }}" class="{{ $c['a'] }}"
@@ -295,7 +385,6 @@
                                 <span class="{{ $c['label'] }}">Consultores</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('settings*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Configurações">
                             <a href="{{ route('settings') }}" class="{{ $c['a'] }}"
@@ -313,7 +402,6 @@
                                 <span class="{{ $c['label'] }}">Dashboard</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('consultant.clients.*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Clientes">
                             <a href="{{ $rConsultant('consultant.clients.index') }}" class="{{ $c['a'] }}"
@@ -322,7 +410,6 @@
                                 <span class="{{ $c['label'] }}">Clientes</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('consultant.tasks.*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Tarefas">
                             <a href="{{ $rConsultant('consultant.tasks.index') }}" class="{{ $c['a'] }}"
@@ -331,22 +418,20 @@
                                 <span class="{{ $c['label'] }}">Tarefas</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('consultant.categories.*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Categorias">
-                            <a href="{{ $rConsultant('consultant.categories.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
+                            <a href="{{ $rConsultant('consultant.categories.index') }}"
+                                class="{{ $c['a'] }}" aria-current="{{ $c['aria'] }}">
                                 <span class="{{ $c['icon'] }}">{!! $icons['categories'] !!}</span>
                                 <span class="{{ $c['label'] }}">Categorias</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('settings*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Configurações">
                             <a href="{{ route('settings') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
                                 <span class="{{ $c['icon'] }}">{!! $icons['settings'] !!}</span>
-                                <span class="{{ $c['label'] }}">Configurações</span>
+                                <span class="{{ $c['label'] }}">Config</span>
                             </a>
                         </li>
                     @elseif ($role === 'client')
@@ -358,7 +443,6 @@
                                 <span class="{{ $c['label'] }}">Dashboard</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('client.accounts*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Contas">
                             <a href="{{ $cHref('client.accounts.index') }}" class="{{ $c['a'] }}"
@@ -367,8 +451,6 @@
                                 <span class="{{ $c['label'] }}">Contas</span>
                             </a>
                         </li>
-
-
                         @php($c = $collapsedLink('client.invoices*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Faturas">
                             <a href="{{ $cHref('client.invoices.index') }}" class="{{ $c['a'] }}"
@@ -377,16 +459,14 @@
                                 <span class="{{ $c['label'] }}">Faturas</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('client.goals'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Metas mensais">
+                        <li class="flex justify-center tooltip tooltip-right" data-tip="Metas">
                             <a href="{{ $cHref('client.goals.index') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
                                 <span class="{{ $c['icon'] }}">{!! $icon('monthly_goals') !!}</span>
                                 <span class="{{ $c['label'] }}">Metas</span>
                             </a>
                         </li>
-
                         @php($c = $collapsedLink('client.transactions*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Transações">
                             <a href="{{ $cHref('client.transactions.index') }}" class="{{ $c['a'] }}"
@@ -395,43 +475,6 @@
                                 <span class="{{ $c['label'] }}">Transações</span>
                             </a>
                         </li>
-
-                        @php($c = $collapsedLink('client.objectives*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Objetivos">
-                            <a href="{{ $cHref('client.objectives.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('objectives') !!}</span>
-                                <span class="{{ $c['label'] }}">Objetivos</span>
-                            </a>
-                        </li>
-
-                        @php($c = $collapsedLink('client.tasks*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Tarefas">
-                            <a href="{{ $cHref('client.tasks.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('tasks') !!}</span>
-                                <span class="{{ $c['label'] }}">Tarefas</span>
-                            </a>
-                        </li>
-
-                        @php($c = $collapsedLink('client.investments*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Investimentos">
-                            <a href="{{ $cHref('client.investments.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('investments') !!}</span>
-                                <span class="{{ $c['label'] }}">Investimentos</span>
-                            </a>
-                        </li>
-
-                        @php($c = $collapsedLink('client.accountability*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Prestação de contas">
-                            <a href="{{ $cHref('client.accountability.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('reports') !!}</span>
-                                <span class="{{ $c['label'] }}">Contas</span>
-                            </a>
-                        </li>
-
                         @php($c = $collapsedLink('settings*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Configurações">
                             <a href="{{ route('settings') }}" class="{{ $c['a'] }}"
@@ -455,6 +498,7 @@
             </aside>
         </div>
     </div>
+
 </body>
 
 </html>
