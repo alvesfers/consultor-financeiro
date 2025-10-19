@@ -19,6 +19,13 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\TransactionEntryController;
+
+Route::get('/{consultant}/transactions/new', [TransactionEntryController::class, 'create'])
+    ->name('transactions.create');
+
+
+
 Route::get('/', fn () => view('welcome'))->name('home');
 
 /**
