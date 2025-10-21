@@ -1,16 +1,20 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="ekon">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="corporate">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ config('app.name', 'Consultoria Financeira') }}</title>
 
-    {{-- Fonts (opcional) --}}
+    {{-- Fonts --}}
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700" rel="stylesheet" />
 
-    {{-- Vite assets --}}
+
+    {{-- Font Awesome --}}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    {{-- Vite --}}
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     <style>
@@ -22,7 +26,51 @@
         body {
             font-family: var(--font-sans);
         }
+
+        /* Exibe versão ESCURA por padrão (tema claro) */
+        .logo--dark {
+            display: inline-block;
+        }
+
+        .logo--light {
+            display: none;
+        }
+
+        /* Quando o tema for "business" (escuro), inverte */
+        html[data-theme="business"] .logo--dark {
+            display: none;
+        }
+
+        html[data-theme="business"] .logo--light {
+            display: inline-block;
+        }
+
+        /* Responsivo: hero */
+        @media (max-width: 767px) {
+            .hero-grid {
+                grid-template-columns: 1fr !important;
+            }
+
+            .hero-mock {
+                margin-top: 1.25rem;
+            }
+        }
     </style>
+
+    {{-- Inicializa tema com base no localStorage ou no sistema --}}
+    <script>
+        (() => {
+            const THEMES = {
+                light: 'corporate',
+                dark: 'business'
+            };
+            const saved = localStorage.getItem('theme');
+            const systemDark = window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const initial = saved || (systemDark ? THEMES.dark : THEMES.light);
+            document.documentElement.setAttribute('data-theme', initial);
+        })();
+    </script>
 </head>
 
 <body class="min-h-screen bg-base-100 text-base-content">
@@ -30,13 +78,32 @@
     <header class="border-b border-base-200">
         <div class="navbar max-w-7xl mx-auto px-4">
             <div class="navbar-start">
-                <a href="{{ url('/') }}" class="flex items-center gap-2">
-                    <div class="avatar placeholder">
-                        <div class="bg-primary text-primary-content w-10 rounded-lg">
-                            <span class="text-lg font-bold">CF</span>
-                        </div>
+                <!-- Menu hamburguer (mobile) -->
+                <div class="dropdown md:hidden">
+                    <div tabindex="0" role="button" class="btn btn-ghost btn-square" aria-label="Abrir menu">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
                     </div>
-                    <span class="text-lg font-semibold">{{ config('app.name', 'Consultoria Financeira') }}</span>
+                    <ul tabindex="0"
+                        class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-56">
+                        <li><a href="#beneficios">Benefícios</a></li>
+                        <li><a href="#como-funciona">Como funciona</a></li>
+                        <li><a href="#recursos">Recursos</a></li>
+                        <li><a href="#precos">Planos</a></li>
+                    </ul>
+                </div>
+
+                <!-- Logo (inverte conforme tema) -->
+                <a href="{{ url('/') }}" class="flex items-center gap-3">
+                    <img src="{{ asset(env('APP_LOGO_DARK_WM', '/storage/logo/escuros.png')) }}"
+                        alt="{{ config('app.name') }}" class="hidden sm:block h-14 logo--dark" loading="eager"
+                        height="24">
+                    <img src="{{ asset(env('APP_LOGO_LIGHT_WM', '/storage/logo/claros.png')) }}"
+                        alt="{{ config('app.name') }}" class="hidden sm:block h-14 logo--light" loading="eager"
+                        height="24">
                 </a>
             </div>
 
@@ -50,6 +117,13 @@
             </div>
 
             <div class="navbar-end gap-2">
+                {{-- Botão de alternar tema --}}
+                <label class="swap swap-rotate btn btn-ghost btn-square" title="Alternar tema">
+                    <input id="theme-toggle" type="checkbox" aria-label="Alternar tema" />
+                    <i class="fa-solid fa-sun swap-off text-xl"></i>
+                    <i class="fa-solid fa-moon swap-on text-xl"></i>
+                </label>
+
                 @if (Route::has('login'))
                     @auth
                         <a href="{{ route('dashboard') }}" class="btn btn-primary">Ir para o painel</a>
@@ -64,9 +138,29 @@
         </div>
     </header>
 
+    <script>
+        // Alternância de tema com persistência
+        document.addEventListener('DOMContentLoaded', () => {
+            const THEMES = {
+                light: 'corporate',
+                dark: 'business'
+            };
+            const root = document.documentElement;
+            const toggle = document.getElementById('theme-toggle');
+            toggle.checked = root.getAttribute('data-theme') === THEMES.dark;
+
+            toggle.addEventListener('change', (e) => {
+                const next = e.target.checked ? THEMES.dark : THEMES.light;
+                root.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+            });
+        });
+    </script>
+
+
     {{-- HERO --}}
     <section class="relative overflow-hidden">
-        <div class="max-w-7xl mx-auto px-4 py-16 md:py-24 grid md:grid-cols-2 gap-10 items-center">
+        <div class="max-w-7xl mx-auto px-4 py-12 md:py-20 grid hero-grid md:grid-cols-2 gap-10 items-center">
             <div>
                 <div class="badge badge-primary badge-lg mb-4">Consultoria financeira moderna</div>
                 <h1 class="text-4xl md:text-5xl font-extrabold leading-tight">
@@ -99,7 +193,7 @@
                 </div>
             </div>
 
-            <div class="relative">
+            <div class="relative hero-mock">
                 <div class="mockup-window border bg-base-200">
                     <div class="px-6 py-6 bg-base-100">
                         {{-- Mock do dashboard do consultor --}}
@@ -138,7 +232,8 @@
                                             <li
                                                 class="flex items-center justify-between p-3 rounded-box border border-base-200">
                                                 <div class="flex items-center gap-3">
-                                                    <input type="checkbox" class="checkbox checkbox-primary" checked />
+                                                    <input type="checkbox" class="checkbox checkbox-primary"
+                                                        checked />
                                                     <span>Classificar transações pendentes (Cliente Ana)</span>
                                                 </div>
                                                 <span class="badge">Hoje</span>
@@ -194,7 +289,7 @@
                                 </div>
                             </div>
 
-                        </div>
+                        </div> {{-- grid --}}
                     </div>
                 </div>
                 {{-- Glow decorativo --}}
@@ -337,7 +432,7 @@
                 </div>
             </div>
 
-            {{-- Depoimentos / prova social --}}
+            {{-- Depoimentos --}}
             <div class="mt-12 grid md:grid-cols-3 gap-6">
                 <div class="card bg-base-100 border border-base-200">
                     <div class="card-body">
@@ -522,12 +617,11 @@
     {{-- FOOTER --}}
     <footer class="border-t border-base-200">
         <div class="footer max-w-7xl mx-auto px-4 py-12 text-base-content">
-            <aside>
-                <div class="avatar placeholder">
-                    <div class="bg-primary text-primary-content w-10 rounded-lg">
-                        <span class="text-lg font-bold">CF</span>
-                    </div>
-                </div>
+            <aside class="flex items-start gap-3">
+                <img src="{{ asset(env('APP_LOGO_DARK', '/storage/logo/escuro.png')) }}" alt="Ekon (escuro)"
+                    class="h-8 w-8 logo--dark" loading="lazy" width="32" height="32">
+                <img src="{{ asset(env('APP_LOGO_LIGHT', '/storage/logo/claro.png')) }}" alt="Ekon (claro)"
+                    class="h-8 w-8 logo--light" loading="lazy" width="32" height="32">
                 <p>
                     {{ config('app.name', 'Consultoria Financeira') }}<br />
                     Plataforma de consultoria financeira com foco em execução.

@@ -35,6 +35,10 @@ return [
         ],
     ],
 
-     'openai' => ['key' => env('OPENAI_API_KEY')],
-
+    'openai' => ['key' => env('OPENAI_API_KEY')],
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'embed_model' => env('GEMINI_EMBED_MODEL', 'text-embedding-004'),
+    ],
 ];
