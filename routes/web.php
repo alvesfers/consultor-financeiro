@@ -10,7 +10,7 @@ use App\Http\Controllers\ClientGoalController;
 use App\Http\Controllers\ClientInvoiceController;
 use App\Http\Controllers\ClientTransactionController;
 use App\Http\Controllers\ClientTransactionsController;
-
+use App\Http\Controllers\RecurringRuleController;
 use App\Http\Controllers\Consultant\CategoryController as ConsultantCategoryController;
 use App\Http\Controllers\Consultant\ClientController as ConsultantClientController;
 use App\Http\Controllers\Consultant\TaskController as ConsultantTaskController;
@@ -121,6 +121,7 @@ Route::prefix('{consultant}')
 /**
  * CLIENT (no contexto do consultor): /{consultant}/client/...
  */
+
 Route::prefix('{consultant}/client')
     ->whereNumber('consultant')
     ->name('client.')
@@ -131,11 +132,11 @@ Route::prefix('{consultant}/client')
         Route::get('/dashboard', [ClientDashboardController::class, 'index'])
             ->name('dashboard');
 
-        // Transações (criar)
+        // Transações
         Route::post('/transactions', [ClientTransactionController::class, 'store'])
             ->name('transactions.store');
 
-        // Movimentações de investimento
+        // Investimentos
         Route::post('/investments/move', [InvestmentController::class, 'move'])
             ->name('investments.move');
 
@@ -145,7 +146,7 @@ Route::prefix('{consultant}/client')
         Route::post('cards', [ClientAccountController::class, 'storeCard'])->name('cards.store');
         Route::patch('cards/{card}', [ClientAccountController::class, 'updateCard'])->name('cards.update');
 
-        // Faturas (derivadas de transactions)
+        // Faturas
         Route::get('invoices', [ClientInvoiceController::class, 'index'])->name('invoices.index');
         Route::get('invoices/{invoice}', [ClientInvoiceController::class, 'show'])->name('invoices.show');
         Route::post('invoices/{invoice}/mark-paid', [ClientInvoiceController::class, 'markPaid'])->name('invoices.markPaid');
@@ -155,12 +156,20 @@ Route::prefix('{consultant}/client')
 
         Route::post('/cards/{card}/invoices/{invoiceMonth}/pay', [CardInvoiceController::class, 'pay'])
             ->whereNumber('card')
-            ->where(['invoiceMonth' => '[0-9]{4}-[0-9]{2}']) // YYYY-MM
+            ->where(['invoiceMonth' => '[0-9]{4}-[0-9]{2}'])
             ->name('cards.invoices.pay');
 
-        // Listar transações (se existir essa página)
+        // Listar transações
         Route::get('transactions', [ClientTransactionsController::class, 'index'])->name('transactions.index');
         Route::get('transactions/export', [ClientTransactionsController::class, 'index'])->name('transactions.export');
+
+        // 🔁 Recorrentes (salários, assinaturas, fixos)
+        Route::prefix('recurrents')->name('recurrents.')->group(function () {
+            Route::get('/',       [RecurringRuleController::class, 'index'])->name('index');
+            Route::get('/create', [RecurringRuleController::class, 'create'])->name('create');
+            Route::post('/',      [RecurringRuleController::class, 'store'])->name('store');
+        });
     });
+
 
 require __DIR__.'/auth.php';
