@@ -1,19 +1,33 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-theme="corporate">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ config('app.name', 'Consultor Financeiro') }}</title>
 
+    {{-- Tema inicial (corporate=light, business=dark) --}}
+    <script>
+        (() => {
+            const THEMES = {
+                light: 'corporate',
+                dark: 'business'
+            };
+            const saved = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+            const initial = saved || (prefersDark ? THEMES.dark : THEMES.light);
+            document.documentElement.setAttribute('data-theme', initial);
+        })();
+    </script>
+
     {{-- Font Awesome --}}
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
     @stack('head')
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     <style>
-        /* iOS safe-area para Dock/FAB */
+        /* iOS safe-area */
         :root {
             --safe-bottom: env(safe-area-inset-bottom, 0px);
         }
@@ -30,7 +44,19 @@
             bottom: calc(1rem + var(--safe-bottom));
         }
 
-        /* Logo swap: por padrão (tema claro) mostra versão escura */
+        /* Estados ativos */
+        .is-active {
+            background-color: hsl(var(--p) / 0.10);
+            color: hsl(var(--p));
+            border-radius: .5rem;
+        }
+
+        .item-active {
+            border-left: 4px solid hsl(var(--p));
+            background-color: hsl(var(--b1));
+        }
+
+        /* Swap logo (claro/escuro) */
         .logo--dark {
             display: inline-block;
         }
@@ -47,29 +73,7 @@
             display: inline-block;
         }
 
-        /* Estado ativo mais evidente (sidebar/dock) */
-        .is-active {
-            background-color: hsl(var(--p) / 0.10);
-            color: hsl(var(--p));
-            border-radius: 0.5rem;
-            box-shadow: 0 0 0 1px hsl(var(--b3));
-        }
-
-        /* Wordmark centralizado no mobile */
-        .brand-center {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-
-        @media (min-width: 1024px) {
-            .brand-center {
-                position: static;
-                transform: none;
-            }
-        }
-
-        /* Efeito quando o drawer (menu) estiver aberto no mobile */
+        /* Efeito quando drawer aberto no mobile */
         .drawer-toggle:checked~.drawer-content .content-dim {
             display: block;
         }
@@ -86,21 +90,36 @@
         .content-dim {
             display: none;
         }
-    </style>
 
-    {{-- Inicializa tema (localStorage ou esquema do sistema) --}}
-    <script>
-        (() => {
-            const THEMES = {
-                light: 'corporate',
-                dark: 'business'
-            };
-            const saved = localStorage.getItem('theme');
-            const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-            const initial = saved || (prefersDark ? THEMES.dark : THEMES.light);
-            document.documentElement.setAttribute('data-theme', initial);
-        })();
-    </script>
+        /* Dock */
+        .dock {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            height: 64px;
+        }
+
+        .dock a {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 10px;
+            border-radius: .75rem;
+        }
+
+        .dock .dock-active {
+            color: hsl(var(--p));
+            background-color: hsl(var(--p) / 0.10);
+        }
+
+        /* Mini logo no sidebar colapsado */
+        .mini-logo {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+        }
+    </style>
 </head>
 
 <body class="min-h-screen" x-data="{
@@ -114,16 +133,13 @@
     @php
         $user = auth()->user();
         $role = $user->role ?? null;
+
         $consultantId = $user?->consultant?->id ?? ($user?->client?->consultant_id ?? null);
-
-        // (extra) clientId para URLs tipo /{clientId}/transactions/new
         $clientId = $user?->client?->id ?? null;
-        $clientUrl = fn(string $path) => $clientId ? url("/{$clientId}{$path}") : '#';
 
-        // helper de rota com parâmetro do consultor
+        $clientUrl = fn(string $path) => $clientId ? url("/{$clientId}{$path}") : '#';
         $rConsultant = fn($name) => $consultantId ? route($name, ['consultant' => $consultantId]) : route('dashboard');
 
-        // helper p/ FA ícones
         if (!function_exists('fa')) {
             function fa($classes)
             {
@@ -146,36 +162,16 @@
             'investments' => fa('fa-solid fa-chart-line'),
             'reports' => fa('fa-solid fa-file-lines'),
             'plus' => fa('fa-solid fa-plus'),
-            'transfer' => fa('fa-solid fa-arrow-right-arrow-left'),
-            'goal' => fa('fa-solid fa-bullseye'),
-            'clientAdd' => fa('fa-solid fa-user-plus'),
-            'taskAdd' => fa('fa-solid fa-square-plus'),
-            'budget' => fa('fa-solid fa-envelope-open-dollar'), // Orçamentos
-            'forecast' => fa('fa-solid fa-wand-magic-sparkles'), // Previsões
-            'newTxn' => fa('fa-solid fa-circle-plus'), // Nova transação (CTA)
+            'newTxn' => fa('fa-solid fa-circle-plus'),
+            'bolt' => fa('fa-solid fa-bolt'),
+            'profile' => fa('fa-regular fa-user'),
             'default' => fa('fa-regular fa-circle'),
         ];
+        $icon = fn(string $k) => $icons[$k] ?? $icons['default'];
 
         $cHref = function (string $name) use ($rConsultant) {
             return \Illuminate\Support\Facades\Route::has($name) ? $rConsultant($name) : '#';
         };
-
-        $icon = fn(string $key) => $icons[$key] ?? $icons['default'];
-
-        $collapsedLink = function (string $pattern) {
-            $isActive = request()->routeIs($pattern);
-            return [
-                'isActive' => $isActive,
-                'a' =>
-                    ($isActive ? 'bg-base-200 ring-1 ring-base-300' : 'hover:bg-base-100') .
-                    ' flex flex-col items-center py-3 rounded-lg transition-all duration-150 ease-out active:scale-[.98]',
-                'icon' => $isActive ? 'text-primary text-lg' : '',
-                'label' => 'text-[10px] mt-1 leading-none ' . ($isActive ? 'font-semibold' : ''),
-                'aria' => $isActive ? 'page' : 'false',
-            ];
-        };
-
-        // helper pro estado ativo do Dock
         $dockActive = fn(string $pattern) => request()->routeIs($pattern) ? 'dock-active' : '';
     @endphp
 
@@ -184,31 +180,28 @@
 
         {{-- CONTENT --}}
         <div class="drawer-content flex flex-col relative">
-            {{-- overlay/efeito quando menu aberto no mobile --}}
+            {{-- overlay --}}
             <div class="content-dim fixed inset-0 bg-base-300/40 lg:hidden"></div>
 
             <div class="content-wrap">
-                {{-- Topbar --}}
-                <header class="navbar bg-base-100 border-b border-base-300 px-4 sticky top-0 z-30">
-                    {{-- Hamburguer (abre sidebar) --}}
-                    <div class="flex-none lg:hidden">
-                        <label for="app-drawer" aria-label="Abrir menu lateral" class="btn btn-ghost btn-square">
+                <header class="navbar h-16 bg-primary border-b border-base-300 sticky top-0 z-30">
+                    <div class="navbar-start">
+                        <label for="app-drawer" aria-label="Abrir menu lateral"
+                            class="btn btn-ghost btn-square lg:hidden">
                             <i class="fa-solid fa-bars"></i>
                         </label>
                     </div>
 
-                    {{-- Wordmark centralizado em telas pequenas (swap claro/escuro) --}}
-                    <div class="flex-1 min-w-0">
-                        <a href="{{ route('home') }}" class="btn btn-ghost brand-center">
+                    <div class="navbar-center">
+                        <a href="{{ route('home') }}" class="btn btn-ghost px-2">
                             <img src="{{ asset(env('APP_LOGO_DARK_WM', '/storage/logo/escuros.png')) }}"
-                                alt="{{ config('app.name') }}" class="h-13 logo--dark" loading="eager" height="32">
+                                alt="{{ config('app.name') }}" class="h-13 logo--dark" height="32" loading="eager">
                             <img src="{{ asset(env('APP_LOGO_LIGHT_WM', '/storage/logo/claros.png')) }}"
-                                alt="{{ config('app.name') }}" class="h-13 logo--light" loading="eager" height="32">
+                                alt="{{ config('app.name') }}" class="h-13 logo--light" height="32" loading="eager">
                         </a>
                     </div>
 
-                    {{-- Ações à direita --}}
-                    <div class="flex-none gap-2">
+                    <div class="navbar-end gap-1">
                         {{-- Toggle de tema --}}
                         <label class="swap swap-rotate btn btn-ghost btn-square" title="Alternar tema">
                             <input id="theme-toggle" type="checkbox" aria-label="Alternar tema" />
@@ -216,7 +209,7 @@
                             <i class="fa-solid fa-moon swap-on text-lg"></i>
                         </label>
 
-                        {{-- Menu do usuário (ícone) --}}
+                        {{-- Menu do usuário --}}
                         <div class="dropdown dropdown-end">
                             <div tabindex="0" role="button" class="btn btn-ghost btn-square"
                                 aria-label="Menu do usuário">
@@ -225,18 +218,13 @@
                             <ul tabindex="0"
                                 class="menu menu-sm dropdown-content bg-base-200 rounded-box z-[60] mt-3 w-56 p-2 shadow">
                                 <li class="menu-title px-2">{{ $user->name ?? 'Usuário' }}</li>
-
-                                <li>
-                                    <a href="{{ route('profile.edit') }}">
-                                        <i class="fa-regular fa-user me-2"></i>Perfil
-                                    </a>
-                                </li>
+                                <li><a href="{{ route('profile.edit') }}"><i
+                                            class="fa-regular fa-user me-2"></i>Perfil</a></li>
                                 <li>
                                     <form method="POST" action="{{ route('logout') }}">
                                         @csrf
-                                        <button type="submit">
-                                            <i class="fa-solid fa-right-from-bracket me-2"></i>Sair
-                                        </button>
+                                        <button type="submit"><i
+                                                class="fa-solid fa-right-from-bracket me-2"></i>Sair</button>
                                     </form>
                                 </li>
                             </ul>
@@ -244,72 +232,81 @@
                     </div>
                 </header>
 
-                {{-- Main (padding extra no mobile por causa do Dock) --}}
+                {{-- MAIN --}}
                 <main class="p-4 lg:p-6 pb-24 sm:pb-10 safe-bottom">
                     @yield('content')
                     @include('partials.flash')
                 </main>
 
-                {{-- DOCK: Bottom navigation (mobile) --}}
+                {{-- DOCK (mobile) --}}
                 <nav class="sm:hidden fixed inset-x-0 bottom-0 z-40">
-                    <div class="dock dock-md bg-base-100/95 backdrop-blur border-t border-base-300 dock-safe">
+                    <div class="dock bg-base-100/95 backdrop-blur border-t border-base-300 dock-safe">
+                        {{-- Nova transação (cliente) --}}
+                        @if ($role === 'client')
+                            <a href="{{ $clientId ? url("/{$clientId}/transactions/new") : '#' }}">
+                                <i class="fa-solid fa-circle-plus text-base"></i><span class="text-[10px]">Nova</span>
+                            </a>
+                        @endif
+
+                        {{-- Home --}}
                         @if ($role === 'client')
                             <a href="{{ $cHref('client.dashboard') }}" class="{{ $dockActive('client.dashboard') }}">
-                                {!! $icon('dashboard') !!}<span class="dock-label">Início</span>
-                            </a>
-                            <a href="{{ $clientUrl('/transactions/new') }}">
-                                {!! $icon('newTxn') !!}<span class="dock-label">Nova</span>
-                            </a>
-                            <a href="{{ $cHref('client.transactions.index') }}"
-                                class="{{ $dockActive('client.transactions*') }}">
-                                {!! $icon('transactions') !!}<span class="dock-label">Transações</span>
-                            </a>
-                            <a href="{{ $cHref('client.budgets.index') }}"
-                                class="{{ $dockActive('client.budgets*') }}">
-                                {!! $icon('budget') !!}<span class="dock-label">Orçamentos</span>
-                            </a>
-                            <a href="{{ $cHref('client.forecasts.index') }}"
-                                class="{{ $dockActive('client.forecasts*') }}">
-                                {!! $icon('forecast') !!}<span class="dock-label">Previsões</span>
+                                <i class="fa-solid fa-house text-base"></i><span class="text-[10px]">Início</span>
                             </a>
                         @elseif ($role === 'consultant')
                             <a href="{{ $rConsultant('consultant.dashboard') }}"
                                 class="{{ $dockActive('consultant.dashboard') }}">
-                                {!! $icon('dashboard') !!}<span class="dock-label">Dashboard</span>
-                            </a>
-                            <a href="{{ $rConsultant('consultant.clients.index') }}"
-                                class="{{ $dockActive('consultant.clients.*') }}">
-                                {!! $icon('clients') !!}<span class="dock-label">Clientes</span>
-                            </a>
-                            <a href="{{ $rConsultant('consultant.tasks.index') }}"
-                                class="{{ $dockActive('consultant.tasks.*') }}">
-                                {!! $icon('tasks') !!}<span class="dock-label">Tarefas</span>
-                            </a>
-                            <a href="{{ $rConsultant('consultant.categories.index') }}"
-                                class="{{ $dockActive('consultant.categories.*') }}">
-                                {!! $icon('categories') !!}<span class="dock-label">Categorias</span>
-                            </a>
-                            <a href="{{ route('settings') }}" class="{{ $dockActive('settings*') }}">
-                                {!! $icon('settings') !!}<span class="dock-label">Config</span>
+                                <i class="fa-solid fa-house text-base"></i><span class="text-[10px]">Início</span>
                             </a>
                         @elseif ($role === 'admin')
                             <a href="{{ route('admin.dashboard') }}" class="{{ $dockActive('admin.dashboard') }}">
-                                {!! $icon('dashboard') !!}<span class="dock-label">Dashboard</span>
-                            </a>
-                            <a href="{{ route('admin.consultants.index') }}"
-                                class="{{ $dockActive('admin.consultants.*') }}">
-                                {!! $icon('users') !!}<span class="dock-label">Consultores</span>
-                            </a>
-                            <a href="{{ route('settings') }}" class="{{ $dockActive('settings*') }}">
-                                {!! $icon('settings') !!}<span class="dock-label">Config</span>
+                                <i class="fa-solid fa-house text-base"></i><span class="text-[10px]">Início</span>
                             </a>
                         @else
                             <a href="{{ route('dashboard') }}" class="{{ $dockActive('dashboard') }}">
-                                {!! $icon('dashboard') !!}<span class="dock-label">Dashboard</span>
+                                <i class="fa-solid fa-house text-base"></i><span class="text-[10px]">Início</span>
                             </a>
                         @endif
+
+                        {{-- Ações (modal) --}}
+                        <label for="actions-modal" class="cursor-pointer">
+                            <i class="fa-solid fa-bolt text-base"></i><span class="text-[10px]">Ações</span>
+                        </label>
                     </div>
                 </nav>
+
+                {{-- MODAL: Ações (lê window.__pageActions ou fallback) --}}
+                <input type="checkbox" id="actions-modal" class="modal-toggle" />
+                <div class="modal modal-bottom sm:modal-middle">
+                    <div class="modal-box">
+                        <h3 class="font-bold text-lg mb-3">Ações</h3>
+                        <div x-data="{ actions: window.__pageActions || [] }" class="space-y-3">
+                            <template x-if="actions.length">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <template x-for="a in actions" :key="a.label">
+                                        <a :href="a.href || '#'" class="btn btn-outline justify-start gap-2">
+                                            <i :class="'fa-solid ' + (a.icon || 'fa-bolt')"></i>
+                                            <span x-text="a.label"></span>
+                                        </a>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <template x-if="!actions.length">
+                                <div>
+                                    <a href="{{ $role === 'client' ? $cHref('client.tasks.index') : ($role === 'consultant' ? $rConsultant('consultant.tasks.index') : '#') }}"
+                                        class="btn btn-outline w-full justify-start gap-2">
+                                        <i class="fa-solid fa-list-check"></i> Tarefas
+                                    </a>
+                                    <p class="text-xs opacity-70 mt-2">Sem ações específicas nesta tela.</p>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="modal-action">
+                            <label for="actions-modal" class="btn">Fechar</label>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -318,11 +315,11 @@
             <label for="app-drawer" aria-label="Fechar menu lateral" class="drawer-overlay"></label>
 
             <aside class="min-h-full border-r border-base-300 bg-base-200 transition-[width] duration-200 ease-in-out"
-                :class="collapsed ? 'lg:w-24' : 'lg:w-72'">
+                :class="collapsed ? 'lg:w-25' : 'lg:w-72'">
 
                 {{-- Header Sidebar --}}
                 <div class="px-4 py-4 flex items-center justify-between">
-                    <div class="flex items-center gap-2" :class="collapsed ? 'mx-auto' : ''">
+                    <div class="flex items-center gap-3" :class="collapsed ? 'mx-auto' : ''">
                         <div class="hidden lg:block" x-show="!collapsed">
                             <div class="font-bold leading-tight">Painel</div>
                             <div class="text-xs opacity-70 capitalize">{{ $role ?? 'user' }}</div>
@@ -337,163 +334,122 @@
                 {{-- Menu expandido --}}
                 <ul class="menu px-3 gap-2" x-show="!collapsed" x-transition>
                     @if ($role === 'admin')
-                        <li>
-                            <a href="{{ route('admin.dashboard') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('admin.dashboard') ? 'is-active' : '' }}">
-                                {!! $icon('dashboard') !!}<span>Dashboard</span>
-                            </a>
+                        <li><a href="{{ route('admin.dashboard') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('admin.dashboard') ? 'item-active' : '' }}">{!! $icon('dashboard') !!}<span>Dashboard</span></a>
                         </li>
-                        <li>
-                            <a href="{{ route('admin.consultants.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('admin.consultants.*') ? 'is-active' : '' }}">
-                                {!! $icon('users') !!}<span>Consultores</span>
-                            </a>
+                        <li><a href="{{ route('admin.consultants.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('admin.consultants.*') ? 'item-active' : '' }}">{!! $icon('users') !!}<span>Consultores</span></a>
                         </li>
-                        <li>
-                            <a href="{{ route('settings') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('settings*') ? 'is-active' : '' }}">
-                                {!! $icon('settings') !!}<span>Configurações</span>
-                            </a>
+                        <li><a href="{{ route('settings') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('settings*') ? 'item-active' : '' }}">{!! $icon('settings') !!}<span>Configurações</span></a>
                         </li>
                     @elseif ($role === 'consultant')
-                        <li>
-                            <a href="{{ $rConsultant('consultant.dashboard') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('consultant.dashboard') ? 'is-active' : '' }}">
-                                {!! $icon('dashboard') !!}<span>Dashboard</span>
-                            </a>
+                        <li><a href="{{ $rConsultant('consultant.dashboard') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('consultant.dashboard') ? 'item-active' : '' }}">{!! $icon('dashboard') !!}<span>Dashboard</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $rConsultant('consultant.clients.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('consultant.clients.*') ? 'is-active' : '' }}">
-                                {!! $icon('clients') !!}<span>Clientes</span>
-                            </a>
+                        <li><a href="{{ $rConsultant('consultant.clients.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('consultant.clients.*') ? 'item-active' : '' }}">{!! $icon('clients') !!}<span>Clientes</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $rConsultant('consultant.tasks.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('consultant.tasks.*') ? 'is-active' : '' }}">
-                                {!! $icon('tasks') !!}<span>Tarefas</span>
-                            </a>
+                        <li><a href="{{ $rConsultant('consultant.tasks.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('consultant.tasks.*') ? 'item-active' : '' }}">{!! $icon('tasks') !!}<span>Tarefas</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $rConsultant('consultant.categories.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('consultant.categories.*') ? 'is-active' : '' }}">
-                                {!! $icon('categories') !!}<span>Categorias</span>
-                            </a>
+                        <li><a href="{{ $rConsultant('consultant.categories.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('consultant.categories.*') ? 'item-active' : '' }}">{!! $icon('categories') !!}<span>Categorias</span></a>
                         </li>
-                        <li>
-                            <a href="{{ route('settings') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('settings*') ? 'is-active' : '' }}">
-                                {!! $icon('settings') !!}<span>Configurações</span>
-                            </a>
+                        <li><a href="{{ route('settings') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('settings*') ? 'item-active' : '' }}">{!! $icon('settings') !!}<span>Configurações</span></a>
                         </li>
                     @elseif ($role === 'client')
-                        <li>
-                            <a href="{{ $cHref('client.dashboard') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.dashboard') ? 'is-active' : '' }}">
-                                {!! $icon('dashboard') !!}<span>Dashboard</span>
-                            </a>
+                        <li><a href="{{ $cHref('client.dashboard') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.dashboard') ? 'item-active' : '' }}">{!! $icon('dashboard') !!}<span>Dashboard</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $cHref('client.accounts.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.accounts*') ? 'is-active' : '' }}">
-                                {!! $icon('accounts') !!}<span>Contas</span>
-                            </a>
+                        <li><a href="{{ $cHref('client.accounts.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.accounts*') ? 'item-active' : '' }}">{!! $icon('accounts') !!}<span>Contas</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $cHref('client.invoices.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.invoices*') ? 'is-active' : '' }}">
-                                {!! $icon('invoices') !!}<span>Faturas</span>
-                            </a>
+                        <li><a href="{{ $cHref('client.invoices.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.invoices*') ? 'item-active' : '' }}">{!! $icon('invoices') !!}<span>Faturas</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $cHref('client.budgets.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.budgets*') ? 'is-active' : '' }}">
-                                {!! $icon('budget') !!}<span>Orçamentos</span>
-                            </a>
+                        <li><a href="{{ $cHref('client.budgets.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.budgets*') ? 'item-active' : '' }}">{!! $icon('monthly_goals') !!}<span>Orçamentos</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $cHref('client.forecasts.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.forecasts*') ? 'is-active' : '' }}">
-                                {!! $icon('forecast') !!}<span>Previsões</span>
-                            </a>
+                        <li><a href="{{ $cHref('client.forecasts.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.forecasts*') ? 'item-active' : '' }}">{!! $icon('reports') !!}<span>Previsões</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $cHref('client.goals.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.goals*') ? 'is-active' : '' }}">
-                                {!! $icon('monthly_goals') !!}<span>Metas mensais</span>
-                            </a>
+                        <li><a href="{{ $cHref('client.goals.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.goals*') ? 'item-active' : '' }}">{!! $icon('monthly_goals') !!}<span>Metas
+                                    mensais</span></a></li>
+                        <li><a href="{{ $cHref('client.transactions.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.transactions*') ? 'item-active' : '' }}">{!! $icon('transactions') !!}<span>Transações</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $cHref('client.transactions.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.transactions*') ? 'is-active' : '' }}">
-                                {!! $icon('transactions') !!}<span>Transações</span>
-                            </a>
+                        <li><a href="{{ $clientId ? url("/{$clientId}/transactions/new") : '#' }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100">{!! $icon('newTxn') !!}<span>Nova
+                                    transação</span></a></li>
+                        <li><a href="{{ $cHref('client.objectives.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.objectives*') ? 'item-active' : '' }}">{!! $icon('objectives') !!}<span>Objetivos</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $clientId ? url("/{$clientId}/transactions/new") : '#' }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100">
-                                {!! $icon('newTxn') !!}<span>Nova transação</span>
-                            </a>
+                        <li><a href="{{ $cHref('client.investments.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.investments*') ? 'item-active' : '' }}">{!! $icon('investments') !!}<span>Investimentos</span></a>
                         </li>
-                        <li>
-                            <a href="{{ $cHref('client.objectives.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.objectives*') ? 'is-active' : '' }}">
-                                {!! $icon('objectives') !!}<span>Objetivos</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ $cHref('client.investments.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.investments*') ? 'is-active' : '' }}">
-                                {!! $icon('investments') !!}<span>Investimentos</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ $cHref('client.accountability.index') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.accountability*') ? 'is-active' : '' }}">
-                                {!! $icon('reports') !!}<span>Prestação de contas</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ route('settings') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('settings*') ? 'is-active' : '' }}">
-                                {!! $icon('settings') !!}<span>Configurações</span>
-                            </a>
+                        <li><a href="{{ $cHref('client.accountability.index') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('client.accountability*') ? 'item-active' : '' }}">{!! $icon('reports') !!}<span>Prestação
+                                    de contas</span></a></li>
+                        <li><a href="{{ route('settings') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('settings*') ? 'item-active' : '' }}">{!! $icon('settings') !!}<span>Configurações</span></a>
                         </li>
                     @else
-                        <li>
-                            <a href="{{ route('dashboard') }}"
-                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('dashboard') ? 'is-active' : '' }}">
-                                {!! $icon('dashboard') !!}<span>Dashboard</span>
-                            </a>
+                        <li><a href="{{ route('dashboard') }}"
+                                class="flex items-center gap-3 py-3 rounded-lg hover:bg-base-100 {{ request()->routeIs('dashboard') ? 'item-active' : '' }}">{!! $icon('dashboard') !!}<span>Dashboard</span></a>
                         </li>
                     @endif
                 </ul>
 
                 {{-- Menu colapsado --}}
                 <ul class="menu px-2 gap-4" x-show="collapsed" x-transition>
-                    @if ($role === 'admin')
-                        @php($c = $collapsedLink('admin.dashboard'))
+                    @php
+                        $collapsedLink = function (string $pattern) {
+                            $active = request()->routeIs($pattern);
+                            return [
+                                'a' =>
+                                    ($active ? 'bg-base-200 ring-1 ring-base-300' : 'hover:bg-base-100') .
+                                    ' flex flex-col items-center py-3 rounded-lg transition-all duration-150 active:scale-[.98]',
+                                'icon' => $active ? 'text-primary text-lg' : '',
+                                'label' => 'text-[10px] mt-1 leading-none ' . ($active ? 'font-semibold' : ''),
+                                'aria' => $active ? 'page' : 'false',
+                            ];
+                        };
+                    @endphp
+
+                    @if ($role === 'client')
+                        @php($c = $collapsedLink('client.dashboard'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Dashboard">
-                            <a href="{{ route('admin.dashboard') }}" class="{{ $c['a'] }}"
+                            <a href="{{ $cHref('client.dashboard') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('dashboard') !!}</span>
-                                <span class="{{ $c['label'] }}">Dashboard</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('dashboard') !!}</span><span
+                                    class="{{ $c['label'] }}">Dashboard</span>
                             </a>
                         </li>
-                        @php($c = $collapsedLink('admin.consultants.*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Consultores">
-                            <a href="{{ route('admin.consultants.index') }}" class="{{ $c['a'] }}"
+                        @php($c = $collapsedLink('client.accounts*'))
+                        <li class="flex justify-center tooltip tooltip-right" data-tip="Contas">
+                            <a href="{{ $cHref('client.accounts.index') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('users') !!}</span>
-                                <span class="{{ $c['label'] }}">Consultores</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('accounts') !!}</span><span
+                                    class="{{ $c['label'] }}">Contas</span>
+                            </a>
+                        </li>
+                        @php($c = $collapsedLink('client.transactions*'))
+                        <li class="flex justify-center tooltip tooltip-right" data-tip="Transações">
+                            <a href="{{ $cHref('client.transactions.index') }}" class="{{ $c['a'] }}"
+                                aria-current="{{ $c['aria'] }}">
+                                <span class="{{ $c['icon'] }}">{!! $icon('transactions') !!}</span><span
+                                    class="{{ $c['label'] }}">Transações</span>
                             </a>
                         </li>
                         @php($c = $collapsedLink('settings*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Configurações">
                             <a href="{{ route('settings') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('settings') !!}</span>
-                                <span class="{{ $c['label'] }}">Config</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('settings') !!}</span><span
+                                    class="{{ $c['label'] }}">Config</span>
                             </a>
                         </li>
                     @elseif ($role === 'consultant')
@@ -501,111 +457,57 @@
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Dashboard">
                             <a href="{{ $rConsultant('consultant.dashboard') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('dashboard') !!}</span>
-                                <span class="{{ $c['label'] }}">Dashboard</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('dashboard') !!}</span><span
+                                    class="{{ $c['label'] }}">Dashboard</span>
                             </a>
                         </li>
                         @php($c = $collapsedLink('consultant.clients.*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Clientes">
                             <a href="{{ $rConsultant('consultant.clients.index') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('clients') !!}</span>
-                                <span class="{{ $c['label'] }}">Clientes</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('clients') !!}</span><span
+                                    class="{{ $c['label'] }}">Clientes</span>
                             </a>
                         </li>
                         @php($c = $collapsedLink('consultant.tasks.*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Tarefas">
                             <a href="{{ $rConsultant('consultant.tasks.index') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('tasks') !!}</span>
-                                <span class="{{ $c['label'] }}">Tarefas</span>
-                            </a>
-                        </li>
-                        @php($c = $collapsedLink('consultant.categories.*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Categorias">
-                            <a href="{{ $rConsultant('consultant.categories.index') }}"
-                                class="{{ $c['a'] }}" aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('categories') !!}</span>
-                                <span class="{{ $c['label'] }}">Categorias</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('tasks') !!}</span><span
+                                    class="{{ $c['label'] }}">Tarefas</span>
                             </a>
                         </li>
                         @php($c = $collapsedLink('settings*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Configurações">
                             <a href="{{ route('settings') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('settings') !!}</span>
-                                <span class="{{ $c['label'] }}">Config</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('settings') !!}</span><span
+                                    class="{{ $c['label'] }}">Config</span>
                             </a>
                         </li>
-                    @elseif ($role === 'client')
-                        @php($c = $collapsedLink('client.dashboard'))
+                    @elseif ($role === 'admin')
+                        @php($c = $collapsedLink('admin.dashboard'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Dashboard">
-                            <a href="{{ $cHref('client.dashboard') }}" class="{{ $c['a'] }}"
+                            <a href="{{ route('admin.dashboard') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('dashboard') !!}</span>
-                                <span class="{{ $c['label'] }}">Dashboard</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('dashboard') !!}</span><span
+                                    class="{{ $c['label'] }}">Dashboard</span>
                             </a>
                         </li>
-                        @php($c = $collapsedLink('client.accounts*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Contas">
-                            <a href="{{ $cHref('client.accounts.index') }}" class="{{ $c['a'] }}"
+                        @php($c = $collapsedLink('admin.consultants.*'))
+                        <li class="flex justify-center tooltip tooltip-right" data-tip="Consultores">
+                            <a href="{{ route('admin.consultants.index') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('accounts') !!}</span>
-                                <span class="{{ $c['label'] }}">Contas</span>
-                            </a>
-                        </li>
-                        @php($c = $collapsedLink('client.invoices*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Faturas">
-                            <a href="{{ $cHref('client.invoices.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('invoices') !!}</span>
-                                <span class="{{ $c['label'] }}">Faturas</span>
-                            </a>
-                        </li>
-                        @php($c = $collapsedLink('client.budgets*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Orçamentos">
-                            <a href="{{ $cHref('client.budgets.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('budget') !!}</span>
-                                <span class="{{ $c['label'] }}">Orçamentos</span>
-                            </a>
-                        </li>
-                        @php($c = $collapsedLink('client.forecasts*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Previsões">
-                            <a href="{{ $cHref('client.forecasts.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('forecast') !!}</span>
-                                <span class="{{ $c['label'] }}">Previsões</span>
-                            </a>
-                        </li>
-                        @php($c = $collapsedLink('client.goals*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Metas">
-                            <a href="{{ $cHref('client.goals.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('monthly_goals') !!}</span>
-                                <span class="{{ $c['label'] }}">Metas</span>
-                            </a>
-                        </li>
-                        @php($c = $collapsedLink('client.transactions*'))
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Transações">
-                            <a href="{{ $cHref('client.transactions.index') }}" class="{{ $c['a'] }}"
-                                aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('transactions') !!}</span>
-                                <span class="{{ $c['label'] }}">Transações</span>
-                            </a>
-                        </li>
-                        <li class="flex justify-center tooltip tooltip-right" data-tip="Nova transação">
-                            <a href="{{ $clientId ? url("/{$clientId}/transactions/new") : '#' }}"
-                                class="flex flex-col items-center py-3 rounded-lg hover:bg-base-100">
-                                {!! $icon('newTxn') !!}<span class="text-[10px] mt-1 leading-none">Nova</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('users') !!}</span><span
+                                    class="{{ $c['label'] }}">Consultores</span>
                             </a>
                         </li>
                         @php($c = $collapsedLink('settings*'))
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Configurações">
                             <a href="{{ route('settings') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('settings') !!}</span>
-                                <span class="{{ $c['label'] }}">Config</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('settings') !!}</span><span
+                                    class="{{ $c['label'] }}">Config</span>
                             </a>
                         </li>
                     @else
@@ -613,18 +515,17 @@
                         <li class="flex justify-center tooltip tooltip-right" data-tip="Dashboard">
                             <a href="{{ route('dashboard') }}" class="{{ $c['a'] }}"
                                 aria-current="{{ $c['aria'] }}">
-                                <span class="{{ $c['icon'] }}">{!! $icon('dashboard') !!}</span>
-                                <span class="{{ $c['label'] }}">Dashboard</span>
+                                <span class="{{ $c['icon'] }}">{!! $icon('dashboard') !!}</span><span
+                                    class="{{ $c['label'] }}">Dashboard</span>
                             </a>
                         </li>
                     @endif
                 </ul>
-
             </aside>
         </div>
     </div>
 
-    {{-- Alternância de tema com persistência --}}
+    {{-- Alternância de tema persistente --}}
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const THEMES = {
@@ -639,8 +540,18 @@
                 root.setAttribute('data-theme', next);
                 localStorage.setItem('theme', next);
             });
+
+            // Suporte a "stack('actions')" como fonte de ações (fallback ao window.__pageActions)
+            try {
+                const inline = document.getElementById('inline-actions-json')?.textContent;
+                const parsed = inline ? JSON.parse(inline) : null;
+                if (parsed && Array.isArray(parsed)) window.__pageActions = parsed;
+            } catch (e) {}
         });
     </script>
+
+    {{-- Opcional: página pode preencher ações via @push --}}
+    @stack('scripts')
 </body>
 
 </html>
